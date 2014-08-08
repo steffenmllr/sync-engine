@@ -53,6 +53,8 @@ class SyncService(object):
         self.poll_interval = poll_interval
 
     def run(self):
+        from inbox import count_poller
+        #gevent.spawn(count_poller.poll)
         if config.get('DEBUG_PROFILING_ON'):
             # If config flag is set, get live top-level profiling output on
             # stdout by doing kill -SIGTRAP <sync_process>.
