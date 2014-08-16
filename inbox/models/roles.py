@@ -50,6 +50,7 @@ class Blob(object):
 
         assert self.data_sha256 == sha256(value).hexdigest(), \
             "Returned data doesn't match stored hash!"
+        self._data = value  # Cache in mem
         return value
 
     @data.setter

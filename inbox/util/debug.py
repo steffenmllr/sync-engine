@@ -31,7 +31,7 @@ def pause_on_exception(exception_type):
 def profile(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        profiler = Profiler()
+        profiler = Profiler(use_signal=False)
         profiler.start()
         r = func(*args, **kwargs)
         profiler.stop()
