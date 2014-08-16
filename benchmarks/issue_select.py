@@ -22,7 +22,7 @@ def get_fetch_throughput(count, cls):
     for _ in range(count):
         id = random.randrange(1, max_id)
         t = timed_fetch_item(cls, id)
-	print t
+        print t
         times.append(t)
     return times
 

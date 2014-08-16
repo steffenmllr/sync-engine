@@ -1,11 +1,13 @@
 import sys
 import random
 import time
+<<<<<<< HEAD
 from inbox.log import get_logger, configure_logging
 from inbox.crispin import connection_pool
 from inbox.models.session import session_scope
 from inbox.models.backends.imap import ImapUid
 from inbox.mailsync.backends.imap import safe_download
+<<<<<<< HEAD
 configure_logging(False)
 log = get_logger()
 

@@ -7,6 +7,7 @@ configure_logging(False)
 from inbox.models import Message
 from inbox.models.session import session_scope
 
+
 def timed_calc_body(msg):
     # Fetch parts into memory
     msg.calculate_sanitized_body()
@@ -24,8 +25,8 @@ def get_calculate_body_throughput(count):
             id = random.randrange(1, max_id)
             msg = db_session.query(Message).get(id)
             t = timed_calc_body(msg)
-	    print t
-	    times.append(t)
+            print t
+            times.append(t)
         return times
 
 
