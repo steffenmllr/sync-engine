@@ -1,4 +1,5 @@
 import platform
+import time
 
 import gevent
 from setproctitle import setproctitle
@@ -11,7 +12,7 @@ from inbox.contacts.remote_sync import ContactSync
 from inbox.events.remote_sync import EventSync
 from inbox.log import get_logger
 from inbox.models.session import session_scope
-from inbox.models import Account
+from inbox.models import Account, Message, Thread
 from inbox.util.concurrency import retry_with_logging
 from inbox.util.debug import attach_profiler
 
@@ -61,11 +62,29 @@ class SyncService(object):
         setproctitle('inbox-sync-{}'.format(self.cpu_id))
         retry_with_logging(self._run_impl, self.log)
 
+    def get_message_count(self):
+        start_time = None
+        INSTRUMENTED_ACCOUNT_ID = 1
+        while True:
+            with session_scope() as db_session:
+                msg_count, = db_session.query(func.count(Message.id)). \
+                    join(Thread).filter(Thread.namespace_id ==
+                                        INSTRUMENTED_ACCOUNT_ID).one()
+            if start_time is None and msg_count > 0:
+                start_time = time.time()
+            if start_time is not None:
+                elapsed_time = time.time() - start_time
+                mps = msg_count / elapsed_time
+                self.log.info('message count', msg_count=msg_count,
+                              elapsed_time=elapsed_time, mps=mps)
+            gevent.sleep(10)
+
     def _run_impl(self):
         """
         Polls for newly registered accounts and checks for start/stop commands.
 
         """
+        gevent.spawn(self.get_message_count)
         while True:
             with session_scope() as db_session:
                 sync_on_this_node = or_(Account.sync_state.is_(None),
