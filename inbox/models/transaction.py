@@ -1,4 +1,4 @@
-from sqlalchemy import event, desc
+from sqlalchemy import event, desc, inspect
 from sqlalchemy import Column, Integer, String, ForeignKey, Index, Enum
 from sqlalchemy.orm import relationship
 
@@ -21,8 +21,6 @@ def dict_delta(current_dict, previous_dict):
 class HasRevisions(object):
     """Mixin that signals that records in this table should be versioned in the
     transaction log."""
-    def should_record(self):
-        return True
 
 
 class Transaction(MailSyncBase, HasPublicID):
@@ -104,9 +102,18 @@ class RevisionMaker(object):
             session.add(revision)
 
     def _should_create_revision(self, obj):
-        if isinstance(obj, HasRevisions) and obj.should_record:
-            return True
-        return False
+        from inbox.models import Contact, Part
+        if not isinstance(obj, HasRevisions):
+            return False
+        if isinstance(obj, Part):
+            if not obj.is_attachment:
+                return False
+        if isinstance(obj, Contact):
+            state = inspect(obj)
+            if not (state.attrs.name.history.has_changes()
+                    or state.attrs._raw_address.history.has_changes()):
+                return False
+        return True
 
 
 def versioned_session(session, revision_maker):

@@ -80,6 +80,7 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
 
     folderitems = relationship(
         FolderItem,
+        lazy='joined',
         backref=backref('thread',
                         uselist=False,
                         primaryjoin='and_('
@@ -224,6 +225,7 @@ class TagItem(MailSyncBase):
     thread = relationship(
         'Thread',
         backref=backref('tagitems',
+                        lazy='joined',
                         collection_class=set,
                         cascade='all, delete-orphan',
                         primaryjoin='and_(TagItem.thread_id==Thread.id, '
@@ -232,6 +234,7 @@ class TagItem(MailSyncBase):
         'Thread.deleted_at.is_(None))')
     tag = relationship(
         Tag,
+        lazy='joined',
         backref=backref('tagitems',
                         primaryjoin='and_('
                         'TagItem.tag_id  == Tag.id, '

@@ -12,6 +12,12 @@ log = get_logger()
 ACCOUNT_ID = 2
 
 syncmanager_lock = db_write_lock(ACCOUNT_ID)
+with session_scope() as db_session:
+    ns = db_session.query(Namespace).get(ACCOUNT_ID)
+    db_session.expunge(ns)
+
+shared_state = {'syncmanager_lock': syncmanager_lock,
+        'namespace': ns}
 
 with open('/home/admin/pickled_stack') as f:
     stack_list = pickle.load(f)
@@ -25,7 +31,7 @@ pool = connection_pool(ACCOUNT_ID, pool_size=1)
 @profile
 def profiled_download_and_commit(uid, crispin_client):
     gmail_download_and_commit_uids(crispin_client, log, '[Gmail]/All Mail',
-            [uid], create_gmail_message, syncmanager_lock)
+            [uid], create_gmail_message, shared_state)
 
 
 def get_download_and_commit_throughput(count):

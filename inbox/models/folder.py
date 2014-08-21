@@ -79,16 +79,20 @@ class Folder(MailSyncBase):
         return obj
 
     def get_associated_tag(self, db_session):
+        if hasattr(db_session, 'namespace'):
+            namespace = db_session.namespace
+        else:
+            namespace = self.namespace
         if self.canonical_name is not None:
             try:
                 return db_session.query(Tag). \
-                    filter(Tag.namespace_id == self.namespace.id,
+                    filter(Tag.namespace_id == namespace.id,
                            Tag.public_id == self.canonical_name).one()
             except NoResultFound:
                 # Explicitly set the namespace_id instead of the namespace
                 # attribute to avoid autoflush-induced IntegrityErrors where
                 # the namespace_id is null on flush.
-                tag = Tag(namespace_id=self.account.namespace.id,
+                tag = Tag(namespace_id=namespace.id,
                           name=self.canonical_name,
                           public_id=self.canonical_name)
                 db_session.add(tag)
@@ -100,13 +104,13 @@ class Folder(MailSyncBase):
                                  self.name.lower()))[:MAX_INDEXABLE_LENGTH]
             try:
                 return db_session.query(Tag). \
-                    filter(Tag.namespace_id == self.namespace.id,
+                    filter(Tag.namespace_id == namespace.id,
                            Tag.name == tag_name).one()
             except NoResultFound:
                 # Explicitly set the namespace_id instead of the namespace
                 # attribute to avoid autoflush-induced IntegrityErrors where
                 # the namespace_id is null on flush.
-                tag = Tag(namespace_id=self.account.namespace.id,
+                tag = Tag(namespace_id=namespace.id,
                           name=tag_name)
                 db_session.add(tag)
                 return tag
