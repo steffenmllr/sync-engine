@@ -793,7 +793,7 @@ def download_queued_uids(crispin_client, log, folder_name, uid_download_stack,
         # XXX this should be uid_download_stack.peek_nowait(), which is
         # currently buggy in gevent (patch pending)
         uid = uid_download_stack.queue[-1]
-        log.debug("downloading UID {} in folder {}".format(uid, folder_name))
+        log.debug("downloading UID", uid=uid, folder=folder_name)
         num_local_messages += download_commit_fn(
             crispin_client, log, folder_name, [uid],
             msg_create_fn, syncmanager_lock)
