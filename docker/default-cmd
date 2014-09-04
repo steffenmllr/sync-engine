@@ -1,0 +1,19 @@
+#!/bin/bash
+set -e -o pipefail
+
+# TODO
+echo "INBOX_ENV is $INBOX_ENV"
+
+if ! [ "$INBOX_ENV" = "dev" ] ; then
+    echo >&2 "INBOX_ENV must be 'dev'"
+    exit 1
+fi
+
+# First run?
+if [ -z "$(ls -A /etc/inboxapp)" ]; then
+    # TODO
+    #./setup.sh
+fi
+
+#./bin/inbox-start
+exec su -

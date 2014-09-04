@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e -o pipefail
+
+# Workaround for the fact that Debian calls it 'docker.io'
+# See https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=740856#10
+DOCKER=`which docker.io || which docker || exit 1`
+docker() { "$DOCKER" "$@"; }
+
+# Start a mysql instance
+# TODO SECURITY: root password
+# TODO params, links volumes
+# See https://registry.hub.docker.com/_/mysql/ for instructions
+docker run --name some-mysql -e MYSQL_ROOT_PASSWORD=root -d mysql:5.6
+docker run --name some-app --link some-mysql:mysql -d inbox
