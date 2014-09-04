@@ -168,8 +168,8 @@ RUN find /tmp/ -mindepth 1 -delete
 RUN find /root/.pip /.pip -delete
 
 # Persistent data will go here.
-VOLUME ['/etc/inboxapp',
-        '/var/log/inboxapp',
+VOLUME ['/etc/inboxapp', \
+        '/var/log/inboxapp', \
         '/var/lib/inboxapp']
 
 # XXX: This variable should probably be removed?
