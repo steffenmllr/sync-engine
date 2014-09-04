@@ -21,16 +21,6 @@ RUN echo "debconf debconf/frontend select Noninteractive" | debconf-set-selectio
 RUN apt-get -qy update
 RUN apt-get -qy upgrade
 
-# for add-apt-repository (Ubuntu only)
-#RUN apt-get -qy install python-software-properties
-
-# Preconfigure MySQL root password
-# TODO SECURITY
-# TODO: I think we can remove this under Docker and once we're Noninteractive.
-# We'll get 'root' with an empty password, which is nice and visible.
-RUN echo "mysql-server mysql-server/root_password password root" | debconf-set-selections
-RUN echo "mysql-server mysql-server/root_password_again password root" | debconf-set-selections
-
 RUN apt-get -qy install \
    build-essential \
    curl \
@@ -45,7 +35,6 @@ RUN apt-get -qy install \
    libyaml-dev \
    libzmq-dev \
    mysql-client \
-   mysql-server \
    pkg-config \
    python \
    python-dev \
@@ -183,11 +172,9 @@ RUN find /tmp/ -mindepth 1 -delete
 RUN find /root/.pip /.pip -delete
 
 # Persistent data will go here.
-# FIXME: mysql?  That should go in another container!
 VOLUME ['/etc/inboxapp',
         '/var/log/inboxapp',
-        '/var/lib/inboxapp',
-        '/var/lib/mysql']
+        '/var/lib/inboxapp']
 
 # XXX: This variable should probably be removed?
 # TODO: What else can go here?
