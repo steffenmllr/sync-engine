@@ -4,6 +4,8 @@ FROM debian:7.6
 MAINTAINER Inbox Team <admin@inboxapp.com>
 
 # Build-time proxy configuration
+# XXX: For now, this assumes you're running apt-cacher-ng and
+#      devpi-server --host 172.17.42.1 on the host.
 # TODO: proxy auto-discovery (IPv6 anycast on eth0? -- See also 'squid-deb-proxy-client' package)
 # TODO: proxy for wget
 COPY docker/01proxy /etc/apt/apt.conf.d/
