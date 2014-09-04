@@ -11,4 +11,5 @@ docker() { "$DOCKER" "$@"; }
 # TODO params, links volumes
 # See https://registry.hub.docker.com/_/mysql/ for instructions
 docker run --name some-mysql -e MYSQL_ROOT_PASSWORD=root -d mysql:5.6
+# docker inspect --format='{{.NetworkSettings.IPAddress}}' some-mysql
 docker run --name some-app --link some-mysql:mysql -d inbox
