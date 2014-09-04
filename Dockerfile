@@ -1,11 +1,5 @@
-# TODO: Explicitly specify versions of things so that we can have repeatable builds
-# This is split into two parts (and probably two images):
-# 1. The base system, which just has a bunch of stuff installed that takes a
-#    long time to build, and thus will be built by a buildbot.
-# 2. The actual app (in a virtualenv)
-# TODO: Debian wheezy, like we use in prod.
-#FROM ubuntu:12.04
-
+# Build as:
+#   docker build -t inbox .
 FROM debian:7.6
 MAINTAINER Inbox Team <admin@inboxapp.com>
 
