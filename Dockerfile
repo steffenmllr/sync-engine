@@ -167,33 +167,33 @@ RUN find /usr/local/lib/python2.7/ -name \*.so -print0 | xargs -0 strip -g
 
 # Remove packages no longer needed
 # TODO: Prune this down.
-RUN apt-mark auto \
-   build-essential \
-   curl \
-   g++ \
-   gcc \
-   git \
-   lib32z1-dev \
-   libffi-dev \
-   libmysqlclient-dev \
-   libxml2-dev \
-   libxslt-dev \
-   libyaml-dev \
-   libzmq-dev \
-   mysql-client \
-   pkg-config \
-   python-dev \
-   python-lxml \
-   python-numpy \
-   python-pip \
-   python-setuptools \
-   python-virtualenv \
-   stow \
-   supervisor \
-   tmux \
-   tnef \
-   wget \
-   && apt-get -y autoremove
+#RUN apt-mark auto \
+#   build-essential \
+#   curl \
+#   g++ \
+#   gcc \
+#   git \
+#   lib32z1-dev \
+#   libffi-dev \
+#   libmysqlclient-dev \
+#   libxml2-dev \
+#   libxslt-dev \
+#   libyaml-dev \
+#   libzmq-dev \
+#   mysql-client \
+#   pkg-config \
+#   python-dev \
+#   python-lxml \
+#   python-numpy \
+#   python-pip \
+#   python-setuptools \
+#   python-virtualenv \
+#   stow \
+#   supervisor \
+#   tmux \
+#   tnef \
+#   wget \
+#   && apt-get -y autoremove
 
 # Remove build-time proxy configuration
 RUN rm /etc/apt/apt.conf.d/01proxy /root/.pip/pip.conf /.pip/pip.conf
