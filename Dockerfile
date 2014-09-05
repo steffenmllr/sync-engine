@@ -10,11 +10,12 @@ COPY docker/01proxy /etc/apt/apt.conf.d/
 COPY docker/pip.conf /.pip/pip.conf
 RUN mkdir -p /root/.pip && ln -s /.pip/pip.conf /root/.pip/pip.conf
 
+RUN echo 'deb http://http.debian.net/debian wheezy-backports main' >> /etc/apt/sources.list
 RUN echo "debconf debconf/frontend select Noninteractive" | debconf-set-selections
-
 RUN apt-get -qy update
 
 # Disable fsync() while building the image (!)
+# NOTE: This is disabled on first-run in docker/default-cmd.
 RUN apt-get -qy install eatmydata && \
     echo /usr/lib/libeatmydata/libeatmydata.so >> /etc/ld.so.preload
 
@@ -34,6 +35,7 @@ RUN apt-get -qy install \
    libyaml-dev \
    libzmq-dev \
    mysql-client \
+   nano \
    pkg-config \
    python \
    python-dev \
@@ -46,7 +48,19 @@ RUN apt-get -qy install \
    supervisor \
    tmux \
    tnef \
+   vim-tiny \
    wget
+
+# OpenSSH:
+#   - No DSA or ECDSA host keys (RSA & Ed25519 are safer)
+#   - Public key auth only
+#   - No (slow) DNS reverse lookups
+RUN apt-get -qy -t wheezy-backports install openssh-server
+RUN rm -f /etc/ssh/ssh_host_* && \
+    sed -E -i -e 's/^(HostKey .*dsa|PasswordAuthentication |ChallengeResponseAuthentication )/#\1/' /etc/ssh/sshd_config && \
+    echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && \
+    echo 'ChallengeResponseAuthentication no' >> /etc/ssh/sshd_config && \
+    echo 'UseDNS no' >> /etc/ssh/sshd_config
 
 # No need to clean up packages; the 'debian' image has an apt config that does
 # this already.
@@ -196,14 +210,23 @@ RUN find /usr/local/lib/python2.7/ -name \*.so -print0 | xargs -0 strip -g
 #   && apt-get -y autoremove
 
 # Remove build-time proxy configuration
-RUN rm /etc/apt/apt.conf.d/01proxy /root/.pip/pip.conf /.pip/pip.conf
+#XXX 
+#RUN rm /etc/apt/apt.conf.d/01proxy
+#RUN rm /root/.pip/pip.conf /.pip/pip.conf
 
 # Empty /tmp/ and other cached junk
 RUN find /tmp/ -mindepth 1 -delete
-RUN find /root/.pip /.pip -delete
+#RUN find /root/.pip /.pip -delete
+
+# This seems to be necessary?
+RUN ldconfig
 
 # Re-enable fsync (important!)
-RUN sed -E -i -e '/libeatmydata\.so/d' /etc/ld.so.preload
+# XXX Move this to the first-run script
+#RUN sed -E -i~ -e '/libeatmydata\.so/d' /etc/ld.so.preload
+
+# XXX : the inbox code currently assumes that it can run "git rev-parse HEAD" to get the code revision, so fake it
+RUN mkdir .git .git/objects .git/refs && echo '0000000000000000000000000000000000000000' > .git/HEAD
 
 # Persistent data will go here.
 VOLUME ["/etc/inboxapp", \
@@ -213,8 +236,9 @@ VOLUME ["/etc/inboxapp", \
 # 'dev', 'test', or 'prod'
 ENV INBOX_ENV dev
 
-COPY docker/default-cmd         /vagrant/docker/default-cmd
-COPY setup.sh                   /vagrant/setup.sh
-CMD ['/vagrant/docker/default-cmd']
-
 EXPOSE 5000
+
+# XXX: Move this up
+COPY setup.sh                   /vagrant/setup.sh
+COPY docker/default-cmd         /vagrant/docker/default-cmd
+CMD ["/vagrant/docker/default-cmd"]

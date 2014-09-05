@@ -3,10 +3,14 @@
 set -e
 
 configure_db=true
-while getopts "p" opt; do
+install_deps=true
+while getopts "pd" opt; do
     case $opt in
         p)
             configure_db=false
+        ;;
+        d)
+            install_deps=false
         ;;
     esac
 done
@@ -19,6 +23,8 @@ color() {
       # fg: 31 red,  32 green, 33 yellow, 34 blue, 35 purple, 36 cyan, 37 white
       # bg: 40 black, 41 red, 44 blue, 45 purple
       }
+
+if $install_deps ; then
 
 color '36;1' "
       _____       _
@@ -83,6 +89,8 @@ color '35;1' 'Finished installing dependencies.'
 
 mkdir -p /etc/inboxapp
 chown $SUDO_USER /etc/inboxapp
+
+fi  # $install_deps
 
 color '35;1' 'Copying default development configuration to /etc/inboxapp'
 src=./etc/config-dev.json
@@ -156,6 +164,8 @@ if $configure_db; then
     fi
 fi
 
+if $install_deps ; then
+
 color '35;1' 'Removing .pyc files...'
 find . -name \*.pyc -delete
 
@@ -170,5 +180,7 @@ mkdir -p /var/log/inboxapp
 chown $SUDO_USER /var/log/inboxapp
 
 git config branch.master.rebase true
+
+fi  # $install_deps
 
 color '35;1' 'Done!.'

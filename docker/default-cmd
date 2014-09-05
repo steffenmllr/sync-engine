@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e -o pipefail
-
 # TODO
 echo "INBOX_ENV is $INBOX_ENV"
 
@@ -9,11 +8,53 @@ if ! [ "$INBOX_ENV" = "dev" ] ; then
     exit 1
 fi
 
-# First run?
-if [ -z "$(ls -A /etc/inboxapp)" ]; then
-    # TODO
-    #./setup.sh
+# First run.
+# Note: This is first run for this version of the *container*.  The *volumes*
+# might already be initialized.
+# This should also be idempotent.
+if ! [ -e /.inbox-firstrun ] ; then
+    echo 'First run of this container!'
+
+    # Remove libeatmydata.so from /etc/ld.so.preload
+    # We must do this before starting any long-running process
+    sed -E -i~ -e '/libeatmydata\.so/d' /etc/ld.so.preload
+
+    # Generate SSH host keys
+    DEBIAN_FRONTEND=noninteractive dpkg-reconfigure openssh-server
+
+    # XXX change this username
+    adduser --disabled-password --gecos "" vagrant
+    adduser vagrant staff
+
+    touch /.inbox-firstrun
 fi
 
-#./bin/inbox-start
-exec su -
+# Start the SSH server (hopefully one day we'll be able to remove this)
+/etc/init.d/ssh start
+
+# No configuration?  Ok, initialize it.
+if [ -z "$(ls -A /etc/inboxapp)" ]; then
+    # TODO
+    ./setup.sh -d -p
+
+    # Override with docker config (basically just for the mysql config)
+    cp -f ./etc/config-docker.json /etc/inboxapp/config.json
+
+    cp -f ./etc/my.cnf /etc/mysql/conf.d/inboxapp.cnf
+    sed -E -i~ -e 's/host=localhost/host=mysql/' /etc/mysql/conf.d/inboxapp.cnf
+
+    chown vagrant /var/log/inboxapp /var/lib/inboxapp
+
+    db_name=`cat /etc/inboxapp/config.json  | grep "MYSQL_DATABASE" | awk '{ print $2 }' | sed "s/\"\(.*\)\",/\1/"`
+    if ! have_dbs=$(mysql -e "show databases like '$db_name'" | grep -q $db_name); then
+        color '35;1' 'Creating databases...'
+        python bin/create-db
+    else
+        color '35;1' 'Upgrading databases...'
+        alembic upgrade head
+    fi
+fi
+
+unset MYSQL_ENV_MYSQL_ROOT_PASSWORD
+
+exec su - vagrant -c 'cd /vagrant && exec ./bin/inbox-start'

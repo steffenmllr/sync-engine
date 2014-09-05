@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e -o pipefail
+
+# Start a mysql instance
+# TODO SECURITY: root password
+# TODO params, links volumes
+# See https://registry.hub.docker.com/_/mysql/ for instructions
+docker run --name inbox-mysql -e MYSQL_ROOT_PASSWORD=root -d mysql:5.6
+# docker inspect --format='{{.NetworkSettings.IPAddress}}' mysql1
+touch authorized_keys
+docker run --name inbox-app --link inbox-mysql:mysql -v "$(pwd)/authorized_keys":/root/.ssh/authorized_keys inbox
