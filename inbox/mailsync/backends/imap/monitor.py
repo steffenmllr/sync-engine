@@ -29,7 +29,7 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
             periodically.
 
     """
-    def __init__(self, account, heartbeat=1, poll_frequency=300,
+    def __init__(self, account, heartbeat=1, poll_frequency=30,
                  retry_fail_classes=[], refresh_flags_max=2000):
 
         self.poll_frequency = poll_frequency
