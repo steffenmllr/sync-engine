@@ -1,5 +1,5 @@
 from sqlalchemy import (Column, Integer, String, Boolean,
-                        Enum, ForeignKey, event)
+                        Enum, ForeignKey, event, BigInteger)
 from sqlalchemy.orm import reconstructor, relationship, backref
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql.expression import false
@@ -31,8 +31,9 @@ COMMON_CONTENT_TYPES = ['text/plain',
 
 class Block(Blob, MailSyncBase, HasRevisions, HasPublicID):
     """ Metadata for any file that we store """
-
     from inbox.models.namespace import Namespace
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # Save some space with common content types
     _content_type_common = Column(Enum(*COMMON_CONTENT_TYPES))
@@ -76,10 +77,12 @@ def serialize_before_insert(mapper, connection, target):
 
 
 class Part(MailSyncBase):
-    """ Part is a section of a specific message. This includes message bodies
-        as well as attachments.
     """
-    block_id = Column(Integer, ForeignKey(Block.id, ondelete='CASCADE'))
+    Part is a section of a specific message. This includes message bodies
+    as well as attachments.
+
+    """
+    block_id = Column(BigInteger, ForeignKey(Block.id, ondelete='CASCADE'))
     block = relationship(
         Block,
         primaryjoin='and_(Part.block_id==Block.id, '
