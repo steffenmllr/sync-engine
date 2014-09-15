@@ -12,6 +12,7 @@ def fix_threads(dry_run):
         generic_accounts = db_session.query(Account). \
             filter(Account.discriminator.in_(('genericaccount',
                                               'outlookccount')))
+        affected_threads = set()
         for account in generic_accounts:
             ns_id = account.namespace.id
             print "handling namespace_id {}".format(ns_id)
@@ -26,6 +27,7 @@ def fix_threads(dry_run):
                     affected_count += 1
                     print ("mismatched message {} on thread {}".
                            format(message.id, message.thread.id))
+                    affected_threads.add(message.thread.id)
                     #if not dry_run:
                     #    new_thread = ImapThread.from_imap_message(
                     #        db_session, namespace=correct_namespace,
@@ -41,6 +43,9 @@ def fix_threads(dry_run):
             print "{} mismatched messages found for namespace {}".format(
                 affected_count, ns_id)
         #db_session.commit()
+    with open('affected_thread_ids.txt', 'w') as f:
+        f.write(', '.join(str(thread_id) for thread_id in affected_threads))
+
 
 if __name__ == '__main__':
     fix_threads()
