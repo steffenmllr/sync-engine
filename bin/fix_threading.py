@@ -24,22 +24,23 @@ def fix_threads(dry_run):
                     correct_namespace = message.parts[0].block.namespace
                     assert correct_namespace.id == ns_id
                     affected_count += 1
-                    print "mismatched message {}".format(message.id)
-                    if not dry_run:
-                        new_thread = ImapThread.from_imap_message(
-                            db_session, namespace=correct_namespace,
-                            message=message)
-                        db_session.add(new_thread)
-                        db_session.flush()
-                        message.thread = new_thread
-                        print ("created new thread {} for message {} "
-                               "on namespace {}".format(new_thread.id,
-                                                        message.id,
-                                                        correct_namespace.id))
+                    print ("mismatched message {} on thread {}".
+                           format(message.id, message.thread.id))
+                    #if not dry_run:
+                    #    new_thread = ImapThread.from_imap_message(
+                    #        db_session, namespace=correct_namespace,
+                    #        message=message)
+                    #    db_session.add(new_thread)
+                    #    db_session.flush()
+                    #    message.thread = new_thread
+                    #    print ("created new thread {} for message {} "
+                    #           "on namespace {}".format(new_thread.id,
+                    #                                    message.id,
+                    #                                    correct_namespace.id))
 
             print "{} mismatched messages found for namespace {}".format(
                 affected_count, ns_id)
-        db_session.commit()
+        #db_session.commit()
 
 if __name__ == '__main__':
     fix_threads()
