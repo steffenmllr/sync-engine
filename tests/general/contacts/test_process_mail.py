@@ -9,7 +9,7 @@ NAMESPACE_ID = 1
 
 def add_fake_message(db_session, thread, from_addr=None, to_addr=None,
                      cc_addr=None, bcc_addr=None):
-    m = Message()
+    m = Message(db_session)
     m.from_addr = from_addr or []
     m.to_addr = to_addr or []
     m.cc_addr = cc_addr or []

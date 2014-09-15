@@ -13,7 +13,7 @@ THREAD_ID = 1
 
 def test_local_storage(db, config):
     account = db.session.query(Account).get(ACCOUNT_ID)
-    m = Message(account=account, mid='', folder_name='',
+    m = Message(db.session, account=account, mid='', folder_name='',
                 received_date=datetime.utcnow(),
                 flags='', body_string=message)
     m.thread_id = THREAD_ID
@@ -30,13 +30,14 @@ def test_local_storage(db, config):
         assert b.encryption_scheme == \
             EncryptionScheme.SECRETBOX_WITH_STATIC_KEY
 
-        key = b.stored_name
-        assert key
+        lookup_key = b.stored_name
+        assert lookup_key
 
         # Accessing .data verifies data integrity
         data = b.data
 
-        raw = b._get_from_disk(key)
+        modified_lookup_key = ''.join(lookup_key.split('/'))
+        raw = b._get_from_disk(modified_lookup_key)
         assert data != raw
 
         assert raw[:len(RESERVED)] == RESERVED and \
@@ -56,7 +57,7 @@ def test_local_deduplication(db, config):
     account = db.session.query(Account).get(ACCOUNT_ID)
 
     # Message 1
-    m = Message(account=account, mid='', folder_name='',
+    m = Message(db.session, account=account, mid='', folder_name='',
                 received_date=datetime.utcnow(),
                 flags='', body_string=message)
     m.thread_id = THREAD_ID
@@ -73,7 +74,7 @@ def test_local_deduplication(db, config):
         blocks.append(b.id)
 
     # Identical message 2
-    m2 = Message(account=account, mid='', folder_name='',
+    m2 = Message(db.session, account=account, mid='', folder_name='',
                  received_date=datetime.utcnow(),
                  flags='', body_string=message)
     m2.thread_id = THREAD_ID

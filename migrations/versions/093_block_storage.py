@@ -26,9 +26,9 @@ def upgrade():
     conn.execute(text("""
         ALTER TABLE block
             MODIFY id BIGINT NULL AUTO_INCREMENT,
-            MODIFY data_sha256 BLOB,
+            MODIFY data_sha256 BINARY(32),
             ADD COLUMN encryption_scheme INTEGER DEFAULT '0',
-            ADD COLUMN stored_name BLOB
+            ADD COLUMN stored_name STRING(255)
         """))
 
     # Can't be batched

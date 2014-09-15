@@ -188,7 +188,7 @@ def create_and_save_draft(db_session, account, to_addr=None, subject=None,
         subject = subject or ''
 
         # Sets is_draft = True, state = 'draft'
-        message = Message.create_draft_message()
+        message = Message.create_draft_message(db_session)
 
         message.from_addr = [(account.sender_name, account.email_address)]
         # TODO(emfree): we should maybe make received_date nullable, so its

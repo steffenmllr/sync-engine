@@ -140,7 +140,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def namespace(self):
         return self.thread.namespace
 
-    def __init__(self, account=None, mid=None, folder_name=None,
+    def __init__(self, db_session, account=None, mid=None, folder_name=None,
                  received_date=None, flags=None, body_string=None,
                  *args, **kwargs):
         """ Parses message data and writes out db metadata and MIME blocks.
@@ -228,7 +228,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
             # Store all message headers as object with index 0
             block = Block()
             block.namespace_id = account.namespace.id
-            block.data = json.dumps(parsed.headers.items())
+            block.set_data(db_session, json.dumps(parsed.headers.items()))
 
             headers_part = Part(block=block, message=self)
             headers_part.walk_index = i
@@ -283,7 +283,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
                     data_to_write = ''
 
                 new_part.content_id = mimepart.headers.get('Content-Id')
-                block.data = data_to_write
+                block.set_data(db_session, data_to_write)
                 self.parts.append(new_part)
             self.calculate_sanitized_body()
         except mime.DecodingError:

@@ -209,7 +209,7 @@ def test_delete_remote_draft(db, api_client):
     from inbox.models.message import Message
 
     # Non-Inbox created draft, therefore don't set inbox_uid
-    message = Message()
+    message = Message(db.session)
     message.thread_id = 1
     message.received_date = datetime.utcnow()
     message.size = len('')

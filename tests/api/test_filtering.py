@@ -176,7 +176,7 @@ def test_strict_argument_parsing(api_client):
 def add_fake_message(account_id, thread, to_email, received_date,
                      db_session):
     """ One-off helper function to add 'fake' messages to the datastore."""
-    m = Message()
+    m = Message(db_session)
     m.from_addr = [('', to_email)]
     m.received_date = received_date
     m.size = 0

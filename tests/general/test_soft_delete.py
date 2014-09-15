@@ -16,7 +16,7 @@ def test_soft_delete(db, config):
     db.session.add(f)
     db.session.flush()
 
-    m = Message()
+    m = Message(db.session)
     m.thread_id = 1
     m.received_date = datetime.datetime.utcnow()
     m.size = 0
