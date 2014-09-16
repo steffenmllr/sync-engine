@@ -29,13 +29,13 @@ class Secret(MailSyncBase):
             ).decrypt(self._secret)
 
     @secret.setter
-    def secret(self, secret):
+    def secret(self, plaintext):
         """
         The secret must be a byte sequence.
         The type must be specified as 'password'/'token'.
 
         """
-        if not isinstance(secret, bytes):
+        if not isinstance(plaintext, bytes):
             raise TypeError('Invalid secret')
 
         self.encryption_scheme = EncryptionScheme.SECRETBOX_WITH_STATIC_KEY
@@ -44,7 +44,7 @@ class Secret(MailSyncBase):
             key=config.get_required('SECRET_ENCRYPTION_KEY'),
             encoder=nacl.encoding.HexEncoder
         ).encrypt(
-            plaintext=secret,
+            plaintext=plaintext,
             nonce=nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE))
 
     @validates('type')

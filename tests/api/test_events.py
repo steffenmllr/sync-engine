@@ -323,6 +323,7 @@ def test_api_filter(db, api_client):
 
     events = api_client.get_data('/events?offset=%s' % '1', ns_id)
     assert len(events) == 2
+    event_id = events[0]['id']
 
     events = api_client.get_data('/events?limit=%s' % '1', ns_id)
     assert len(events) == 1
@@ -351,7 +352,7 @@ def test_api_filter(db, api_client):
     events = api_client.get_data('/events?location=%s' % 'bad', ns_id)
     assert len(events) == 0
 
-    _filter = 'event_id=%s' % '6n5fi3kwousrq3m6wl89tidx9'
+    _filter = 'event_id=%s' % event_id
     events = api_client.get_data('/events?' + _filter, ns_id)
     assert len(events) == 1
 

@@ -4,9 +4,8 @@ from hashlib import sha256
 
 import nacl.secret
 import nacl.utils
-from sqlalchemy import Column, Integer, String, Index, Binary
+from sqlalchemy import Column, Integer, String, Index
 from sqlalchemy.ext.declarative import declared_attr
-#from sqlalchemy.orm import object_session
 
 from inbox.config import config
 from inbox.log import get_logger
@@ -27,9 +26,7 @@ KEY_VERSION = b'\x00\x00\x00\x00'
 class Blob(object):
     """ A blob of data that can be saved to local or remote (S3) disk. """
     size = Column(Integer, default=0)
-
-    # For deduplication
-    data_sha256 = Column(Binary(32))
+    data_sha256 = Column(String(64))
 
     # Unencrypted=0, WithStaticKey=1
     encryption_scheme = Column(Integer, server_default='0')
@@ -39,6 +36,7 @@ class Blob(object):
 
     @property
     def data(self):
+        # GET DATA:
         # On initial download we temporarily store data unencrypted
         # in memory
         if hasattr(self, '_data'):
@@ -50,6 +48,7 @@ class Blob(object):
         else:
             value = self.encrypted_data_getter()
 
+        # CHECK DATA:
         if value is None:
             log.error("Couldn't find data!")
             return value
@@ -127,8 +126,7 @@ class Blob(object):
 
     @declared_attr
     def __table_args__(cls):
-        return (Index('ix_%s_datasha256' % cls.__tablename__, 'data_sha256',
-                      mysql_length=32),)
+        return (Index('ix_%s_datasha256' % cls.__tablename__, 'data_sha256'),)
 
     # Helpers
     def encrypted_data_getter(self):
@@ -159,7 +157,7 @@ class Blob(object):
 
     def unencrypted_data_getter(self):
         assert self.encryption_scheme == \
-            EncryptionScheme.NULL and self.stored_name
+            EncryptionScheme.NULL and self.data_sha256
 
         lookup_key = self.data_sha256
 

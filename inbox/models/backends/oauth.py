@@ -4,11 +4,11 @@ refresh tokens.
 """
 from datetime import datetime, timedelta
 
-from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declared_attr
 
-from inbox.models.session import session_scope
 from inbox.models.secret import Secret
-from inbox.models.util import NotFound
 from inbox.oauth import new_token, validate_token
 from inbox.basicauth import AuthError
 from inbox.basicauth import ConnectionError
@@ -22,6 +22,18 @@ __volatile_tokens__ = {}
 
 
 class OAuthAccount(object):
+    # Secret
+    @declared_attr
+    def refresh_token_id(cls):
+        return Column(Integer, ForeignKey(Secret.id), nullable=False)
+
+    @declared_attr
+    def secret(cls):
+        return relationship(
+            'Secret', uselist=False, primaryjoin='and_('
+            '{0}.refresh_token_id == Secret.id, '
+            'Secret.deleted_at.is_(None))'.format(cls.__name__))
+
     @property
     def provider_module(self):
         from inbox.auth import handler_from_provider
@@ -29,13 +41,7 @@ class OAuthAccount(object):
 
     @property
     def refresh_token(self):
-        with session_scope() as db_session:
-            try:
-                secret = db_session.query(Secret).filter(
-                    Secret.id == self.refresh_token_id).one()
-                return secret.secret
-            except NoResultFound:
-                raise NotFound()
+        return self.secret.secret
 
     @refresh_token.setter
     def refresh_token(self, value):
@@ -51,16 +57,11 @@ class OAuthAccount(object):
         if b'\x00' in value:
             raise ValueError('Invalid refresh_token')
 
-        #TODO[k]: Session should not be grabbed here
-        with session_scope() as db_session:
-            secret = Secret()
-            secret.secret = value
-            secret.type = 'token'
+        if not self.secret:
+            self.secret = Secret()
 
-            db_session.add(secret)
-            db_session.commit()
-
-            self.refresh_token_id = secret.id
+        self.secret.secret = value
+        self.secret.type = 'token'
 
     @property
     def access_token(self):

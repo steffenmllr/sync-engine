@@ -72,6 +72,8 @@ def test_token(db, config):
     secret_id = account.refresh_token_id
     secret = db.session.query(Secret).get(secret_id)
 
+    assert secret == account.secret
+
     assert secret._secret != token, 'token not encrypted'
 
     decrypted_secret = secret.secret

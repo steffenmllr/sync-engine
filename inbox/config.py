@@ -3,7 +3,6 @@ import json
 import yaml
 from urllib import quote_plus as urlquote
 
-
 __all__ = ['config', 'engine_uri', 'db_uri']
 
 
@@ -35,6 +34,7 @@ if 'INBOX_ENV' in os.environ:
     env = os.environ['INBOX_ENV']
 else:
     env = 'prod'
+
 
 if env == 'prod':
     # Read prod config from an unversioned config file.

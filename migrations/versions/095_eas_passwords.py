@@ -20,7 +20,6 @@ def upgrade():
     Base = sa.ext.declarative.declarative_base()
     Base.metadata.reflect(engine)
     from inbox.models.session import session_scope
-    from inbox.models.secret import Secret
 
     if 'easaccount' in Base.metadata.tables:
         op.add_column('easaccount', sa.Column('password_id', sa.Integer()))
@@ -44,22 +43,16 @@ def upgrade():
                         format(a.id)
                     continue
 
-                secret = Secret()
-                secret.secret = value
-                secret.type = 'password'
-
-                # Need to add + flush so we can get secret.id
-                db_session.add(secret)
-                db_session.flush()
-
-                a.password_id = secret.id
-                assert a.password_id
-                assert a.password == value
+                a.password = value
 
                 db_session.add(a)
 
+                assert a.password_id
+                assert a.password == value
+
         db_session.commit()
 
+        # NOTE: Maybe don't do this yet?
         op.drop_column('easaccount', 'password')
 
 

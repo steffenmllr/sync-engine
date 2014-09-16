@@ -1,11 +1,11 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy import event
+from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.models.session import session_scope
 from inbox.models.backends.imap import ImapAccount
 from inbox.models.secret import Secret
-from inbox.models.util import NotFound
 
 PROVIDER = 'generic'
 
@@ -18,19 +18,17 @@ class GenericAccount(ImapAccount):
     supports_condstore = Column(Boolean)
 
     # Secret
-    password_id = Column(Integer)
+    password_id = Column(Integer, ForeignKey(Secret.id), nullable=False)
+    secret = relationship(
+        'Secret', uselist=False,
+        primaryjoin='and_(GenericAccount.password_id == Secret.id, '
+                    'Secret.deleted_at.is_(None))')
 
     __mapper_args__ = {'polymorphic_identity': 'genericaccount'}
 
     @property
     def password(self):
-        with session_scope() as db_session:
-            try:
-                secret = db_session.query(Secret).filter(
-                    Secret.id == self.password_id).one()
-                return secret.secret
-            except NoResultFound:
-                raise NotFound()
+        return self.secret.secret
 
     @password.setter
     def password(self, value):
@@ -46,16 +44,11 @@ class GenericAccount(ImapAccount):
         if b'\x00' in value:
             raise ValueError('Invalid password')
 
-        #TODO[k]: Session should not be grabbed here
-        with session_scope() as db_session:
-            secret = Secret()
-            secret.secret = value
-            secret.type = 'password'
+        if not self.secret:
+            self.secret = Secret()
 
-            db_session.add(secret)
-            db_session.commit()
-
-            self.password_id = secret.id
+        self.secret.secret = value
+        self.secret.type = 'password'
 
     def verify(self):
         from inbox.auth.generic import verify_account

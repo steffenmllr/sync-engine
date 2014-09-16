@@ -140,11 +140,7 @@ CREATE TABLE `alembic_version` (
 
 LOCK TABLES `alembic_version` WRITE;
 /*!40000 ALTER TABLE `alembic_version` DISABLE KEYS */;
-<<<<<<< HEAD
-INSERT INTO `alembic_version` VALUES ('159607944f52');
-=======
-INSERT INTO `alembic_version` VALUES ('43e5867a6ef1');
->>>>>>> New Block encryption scheme.
+INSERT INTO `alembic_version` VALUES ('427812c1e849');
 /*!40000 ALTER TABLE `alembic_version` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -158,7 +154,7 @@ DROP TABLE IF EXISTS `block`;
 CREATE TABLE `block` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `size` int(11) DEFAULT NULL,
-  `data_sha256` blob,
+  `data_sha256` varbinary(64) DEFAULT NULL,
   `public_id` binary(16) NOT NULL,
   `_content_type_common` enum('text/plain','text/html','multipart/alternative','multipart/mixed','image/jpeg','multipart/related','application/pdf','image/png','image/gif','application/octet-stream','multipart/signed','application/msword','application/pkcs7-signature','message/rfc822','image/jpg') DEFAULT NULL,
   `_content_type_other` varchar(255) DEFAULT NULL,
@@ -168,13 +164,14 @@ CREATE TABLE `block` (
   `updated_at` datetime NOT NULL,
   `deleted_at` datetime DEFAULT NULL,
   `encryption_scheme` int(11) DEFAULT '0',
-  `stored_name` blob,
+  `stored_name` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `namespace_id` (`namespace_id`),
   KEY `ix_block_public_id` (`public_id`),
   KEY `ix_block_created_at` (`created_at`),
   KEY `ix_block_deleted_at` (`deleted_at`),
   KEY `ix_block_updated_at` (`updated_at`),
+  KEY `ix_block_datasha256` (`data_sha256`),
   CONSTRAINT `block_ibfk_1` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=51 DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -221,7 +218,7 @@ CREATE TABLE `calendar` (
 
 LOCK TABLES `calendar` WRITE;
 /*!40000 ALTER TABLE `calendar` DISABLE KEYS */;
-INSERT INTO `calendar` VALUES (1,'ÔøΩ5ÔøΩÔøΩÔøΩF\0',1,'default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,''),(2,'ÔøΩ5ÔøΩÔøΩÔøΩF\0',1,'provider_default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',1,''),(3,'ÔøΩ5ÔøΩÔøΩÔøΩF\0',2,'default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,'');
+INSERT INTO `calendar` VALUES (1,'œ5ˆê¨F\0ªÌ´Åûˆ√¿',1,'default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,''),(2,'œ5ˆê¨F\0ª3´Åûˆ√¿',1,'provider_default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',1,''),(3,'œ5ˆê¨F\0ª5´Åûˆ√¿',2,'default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,'');
 /*!40000 ALTER TABLE `calendar` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -320,7 +317,7 @@ CREATE TABLE `easaccount` (
   `eas_policy_key` varchar(64) DEFAULT NULL,
   `eas_account_sync_key` varchar(64) NOT NULL DEFAULT '0',
   `eas_state` enum('sync','sync keyinvalid','finish') DEFAULT 'sync',
-  `password` varchar(256) DEFAULT NULL,
+  `password_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   CONSTRAINT `easaccount_ibfk_1` FOREIGN KEY (`id`) REFERENCES `account` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -524,7 +521,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','inbox','p5ÔøΩÔøΩÔøΩ\rD_Ôø','',1,'desc1','data1','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-02-01 00:00:01',0,'local','2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,1,0),(2,'b9f18495985f4814a95e28f3e119a730','inbox','◊éÔøΩv‘êAÔøΩÔøΩ','',1,'desc2','data2','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-01-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1),(3,'c9f18495985f4814a95e28f3e119a730','inbox','◊éÔøΩv‘êAÔøΩjFc','',1,'desc5','data3','InboxHeadquarters',1,NULL,NULL,'1970-02-01 00:00:01','1970-03-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1);
+INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','inbox','p5ßë‹\rD_∂Î ä@Ø◊˝','',1,'desc1','data1','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-02-01 00:00:01',0,'local','2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,1,0),(2,'b9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπ‡FcÕVø\n','',1,'desc2','data2','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-01-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1),(3,'c9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπjFcÕVø\n','',1,'desc5','data3','InboxHeadquarters',1,NULL,NULL,'1970-02-01 00:00:01','1970-03-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1);
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -682,6 +679,8 @@ CREATE TABLE `genericaccount` (
   `provider` varchar(64) NOT NULL,
   `supports_condstore` tinyint(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
+  KEY `genericaccount_ibfk_2` (`password_id`),
+  CONSTRAINT `genericaccount_ibfk_2` FOREIGN KEY (`password_id`) REFERENCES `secret` (`id`),
   CONSTRAINT `genericaccount_ibfk_1` FOREIGN KEY (`id`) REFERENCES `imapaccount` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -721,6 +720,8 @@ CREATE TABLE `gmailaccount` (
   `client_id` varchar(256) DEFAULT NULL,
   `client_secret` varchar(256) DEFAULT NULL,
   PRIMARY KEY (`id`),
+  KEY `gmailaccount_ibfk_2` (`refresh_token_id`),
+  CONSTRAINT `gmailaccount_ibfk_2` FOREIGN KEY (`refresh_token_id`) REFERENCES `secret` (`id`),
   CONSTRAINT `gmailaccount_ibfk_1` FOREIGN KEY (`id`) REFERENCES `imapaccount` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1127,6 +1128,8 @@ CREATE TABLE `outlookaccount` (
   `family_name` varchar(256) DEFAULT NULL,
   `given_name` varchar(256) DEFAULT NULL,
   PRIMARY KEY (`id`),
+  KEY `outlookaccount_ibfk_2` (`refresh_token_id`),
+  CONSTRAINT `outlookaccount_ibfk_2` FOREIGN KEY (`refresh_token_id`) REFERENCES `secret` (`id`),
   CONSTRAINT `outlookaccount_ibfk_1` FOREIGN KEY (`id`) REFERENCES `imapaccount` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1201,7 +1204,7 @@ CREATE TABLE `secret` (
 
 LOCK TABLES `secret` WRITE;
 /*!40000 ALTER TABLE `secret` DISABLE KEYS */;
-INSERT INTO `secret` VALUES ('2014-07-09 18:58:49','2014-07-09 18:58:49',NULL,1,'password',1,'‰∏ôGı^\rN”∫1Ü÷dèz˛Ôâö(civÛo¸\'µ	ﬁ]#{ø-¿U_≤Cµã%_]ìı√ºÔ_HãÏ˘∏)UA∞\'”$∆∆íÀ‹÷ÇyµX\'ˆ≈');
+INSERT INTO `secret` VALUES ('2014-07-09 18:58:49','2014-07-09 18:58:49',NULL,1,'token',1,'≥<ßU≈—Ñ∏?√Fúÿ	Ê˙\r…åcFØ©@2ñ˝e8œ~qqÃ}èäf…ÎdE+ì¨x\'ˆÙ~íYøÙÉc˛√˘nt±∆ıæ]¥MsDπ');
 /*!40000 ALTER TABLE `secret` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1462,8 +1465,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
-<<<<<<< HEAD
--- Dump completed on 2014-09-16  3:17:39
-=======
--- Dump completed on 2014-09-13  2:18:45
->>>>>>> New Block encryption scheme.
+-- Dump completed on 2014-09-16 17:50:31

@@ -23,12 +23,17 @@ def upgrade():
             MODIFY block_id BIGINT
         """))
 
+    # Note we provide the index name `ix_block_datasha256` to be consistent
+    # with what's generated through the model.
     conn.execute(text("""
         ALTER TABLE block
             MODIFY id BIGINT NULL AUTO_INCREMENT,
-            MODIFY data_sha256 BINARY(32),
             ADD COLUMN encryption_scheme INTEGER DEFAULT '0',
-            ADD COLUMN stored_name STRING(255)
+            ADD COLUMN stored_name VARCHAR(255) NULL
+        """))
+
+    conn.execute(text("""
+        ALTER TABLE block ADD INDEX ix_block_datasha256 (data_sha256)
         """))
 
     # Can't be batched
