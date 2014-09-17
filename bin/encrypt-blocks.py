@@ -94,7 +94,7 @@ class EncryptionWorker(gevent.Greenlet):
 
                     # Setting .data encrypts and resaves it to s3
                     # Also sets encryption_scheme, stored_name
-                    first.data = raw_data
+                    first.set_data(db_session, raw_data)
                     assert first.encryption_scheme != EncryptionScheme.NULL
 
                     # STEP 2: Deduped blocks can be updated directly
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     global engine
 
     preflight()
-    engine = main_engine(pool_size=1)
+    engine = main_engine()
 
     e = EncryptionManager()
     e.run()

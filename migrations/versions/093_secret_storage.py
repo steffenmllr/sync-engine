@@ -63,7 +63,7 @@ def upgrade():
 
         # Only password secrets correspond to GenericAccount;
         # Gmail, Outlook are OAuth and EAS does not use the Secrets table yet.
-        password_secrets = [id_ for id_, in db_session.query(Secret).join(
+        password_secrets = [id_ for id_, in db_session.query(Secret.id).join(
             GenericAccount).filter(Secret.id == GenericAccount.password_id)]
 
         for s in secrets:

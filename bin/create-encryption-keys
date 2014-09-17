@@ -1,37 +1,16 @@
 #!/usr/bin/env python
 import binascii
 
-import click
 import yaml
 import nacl.secret
 import nacl.utils
 
 
-@click.command()
-@click.option('--env', type=click.Choice(['prod', 'dev', 'test']),
-              default='dev',
-              help='Loads the corresponding config file for the env.')
-def main(env):
-    from inbox.config import (prod_secrets_filename, dev_secrets_filename,
-                              test_secrets_filename)
+def main():
+    from inbox.config import config, secrets_path
 
-    if env == 'prod':
-        secrets_path = prod_secrets_filename
-    elif env == 'dev':
-        secrets_path = dev_secrets_filename
-    else:
-        secrets_path = test_secrets_filename
-
-    # Our secrets config file contains our database credentials etc.,
-    # so it better exist.
-    try:
-        with open(secrets_path) as f:
-            secrets_dict = yaml.safe_load(f)
-    except IOError:
-        raise Exception('Missing secrets config file {0}'.format(secrets_path))
-
-    # If it contains encryption keys, don't override.
-    if secrets_dict.get('SECRET_ENCRYPTION_KEY'):
+    # If the config contains encryption keys, don't override.
+    if config.get('SECRET_ENCRYPTION_KEY'):
         raise Exception('Encryption keys already present in secrets config '
                         'file {0}'.format(secrets_path))
 
@@ -43,10 +22,19 @@ def main(env):
             nacl.utils.random(nacl.secret.SecretBox.KEY_SIZE))
     }
 
-    # Update secrets config file
-    with open(secrets_path, 'a') as f:
-        print 'Writing keys to secrets config file {0}'.format(secrets_path)
-        yaml.dump(data, f, default_flow_style=False)
+    # Our secrets config file contains our database credentials etc.,
+    # so it better exist.
+    # Update it
+    try:
+        with open(secrets_path, 'a') as f:
+            print 'Writing keys to secrets config file {0}'.format(secrets_path)
+            yaml.dump(data, f, default_flow_style=False)
+    except IOError:
+        raise Exception('Check file write permissions on config file {0}'.
+                        format(secrets_path))
+
+    # Update the config dict
+    config.update(data)
 
 
 if __name__ == '__main__':
