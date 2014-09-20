@@ -21,7 +21,7 @@ from imapclient import IMAPClient
 from inbox.models import Account, Folder, FolderItem, Message, Namespace, Thread
 from inbox.models.session import session_scope
 from inbox.models.backends.gmail import GmailAccount
-from inbox.models.backends.imap import ImapThread
+from inbox.models.backends.imap import ImapThread, ImapUid
 from inbox.providers import provider_info
 from inbox.sqlalchemy_ext.util import b36_to_bin, int128_to_b36 as bin_to_b36
 from inbox.auth.gmail import (OAUTH_CLIENT_ID,
@@ -29,7 +29,7 @@ from inbox.auth.gmail import (OAUTH_CLIENT_ID,
                               OAUTH_ACCESS_TOKEN_URL)
 from inbox.util.addr import parse_email_address_list
 import sqlalchemy as sa
-from sqlalchemy.orm import object_session
+from sqlalchemy.orm import object_session, joinedload
 import sqlite3
 
 SOURCE_APP_NAME = 'Testing the Gmail API'
@@ -79,10 +79,17 @@ SQLITE3_INIT_SCRIPT = r"""
         imap_noselect BOOLEAN
     );
 
+    CREATE TABLE folder_threads (
+        folder_name TEXT NOT NULL,
+        thread_id INTEGER NOT NULL,
+        PRIMARY KEY(folder_name, thread_id)
+    );
+
     CREATE TABLE folder_messages (
         folder_name TEXT NOT NULL,
         imap_uid INTEGER NOT NULL,
         message_id INTEGER,
+        subject TEXT,   -- TODO: Remove this  
         PRIMARY KEY(folder_name, imap_uid)
     );
 
@@ -454,8 +461,8 @@ def slurp_imap_namespace_gmail(imap, db, namespace=None, account=None):
 
             # Create folder_messages entries
             db.executemany("""
-                INSERT INTO folder_messages (folder_name, imap_uid, message_id)
-                VALUES (?, ?, NULL)
+                INSERT INTO folder_messages (folder_name, imap_uid)
+                VALUES (?, ?)
                 """, ((folder_name, imap_uid) for imap_uid in imap_uids))
 
             # Get the folder flags
@@ -545,9 +552,9 @@ def slurp_imap_namespace_gmail(imap, db, namespace=None, account=None):
                     # Mark the message as being in the current folder.
                     db.execute("""
                         UPDATE folder_messages
-                        SET message_id = ?
+                        SET message_id = ?, subject = ?
                         WHERE folder_name = ? AND imap_uid = ?
-                        """, (message_id, folder_name, uid))
+                        """, (message_id, msg_data['subject'], folder_name, uid))
 
         # Construct threads (assuming gmail for now)
         db.execute("""
@@ -559,6 +566,15 @@ def slurp_imap_namespace_gmail(imap, db, namespace=None, account=None):
             SELECT threads.id, messages.id
             FROM threads, messages
             WHERE threads.x_gm_thrid = messages.x_gm_thrid
+            """)
+
+        # Construct folder_threads
+        db.execute("""
+            INSERT INTO folder_threads (folder_name, thread_id)
+            SELECT folder_messages.folder_name, thread_messages.thread_id
+            FROM
+                folder_messages
+                LEFT JOIN thread_messages USING (message_id)
             """)
 
 
@@ -595,14 +611,66 @@ def slurp_local_namespace_gmail(db, namespace=None, account=None):
         for i in range(0, len(thread_ids), batch_size):
             thread_ids_batch = thread_ids[i:i+batch_size]
             rows = (
-                db_session.query(Message.id, Message.g_thrid, Message.g_msgid,
-                    Message.received_date, Message.subject, Message.size)
+                db_session.query(Message.thread_id, Message.id,
+                    Message.g_thrid, Message.g_msgid, Message.received_date,
+                    Message.subject, Message.size)
                 .filter(Message.thread_id.in_(thread_ids_batch))
                 .all())
+
+            # Populate `messages`
             db.executemany("""
                 INSERT INTO messages (id, x_gm_thrid, x_gm_msgid, date, subject, size)
                 VALUES (?, ?, ?, ?, ?, ?)
-                """, rows)
+                """, (row[1:] for row in rows))
+
+            # thread -> messages relation
+            db.executemany("""
+                INSERT INTO thread_messages (thread_id, message_id)
+                VALUES (?, ?)
+                """, (row[:2] for row in rows))
+
+            #import IPython; IPython.embed()
+
+            # folder -> threads relation
+            db.executemany("""
+                INSERT INTO folder_threads (folder_name, thread_id)
+                VALUES (?, ?)
+                """,
+                (db_session.query(Folder.name, FolderItem.thread_id)
+                    .join(FolderItem.folder)
+                    .filter(FolderItem.thread_id.in_(thread_ids_batch))
+                    .order_by(Folder.name, FolderItem.thread_id)
+                    .all()))
+
+            # folder -> messages relation (in batches)
+            # TODO: Why are some folder_messages missing from this query? (Sent)
+            # Something missing in the datastore?
+            # FIXME FIXME This is so busted
+            message_ids = list(row[1] for row in rows)
+            if True:
+            #for j in range(0, len(message_ids), batch_size):
+            #    message_ids_batch = thread_ids[j:j+batch_size]
+
+                db.executemany("""
+                    INSERT INTO folder_messages (folder_name, imap_uid, message_id, subject)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (db_session.query(Folder.name, ImapUid.msg_uid, ImapUid.message_id, Message.subject)
+                        .filter(FolderItem.thread_id == Message.thread_id)
+                        .filter(FolderItem.folder_id == Folder.id)
+                        .filter(ImapUid.folder_id == Folder.id)
+                        .filter(ImapUid.message_id == Message.id)
+                        #.filter(ImapUid.message_id.in_(message_ids_batch)).all()))
+                        .filter(FolderItem.thread_id.in_(thread_ids_batch)).all()))
+
+                #if 78 in message_ids_batch:
+                #    import IPython; IPython.embed()
+
+            #if 61 in thread_ids_batch:
+            #    import IPython; IPython.embed()
+
+# Example shell script to parse the output of this:
+# for x in local imap ; do sqlite3 $x.db 'SELECT * FROM folder_messages ORDER BY folder_name, imap_uid, subject' > $x.dump ; done ; vim -d local.dump imap.dump
 
 
 def main():
