@@ -1,0 +1,69 @@
+#!/bin/bash
+set -e -o pipefail
+set -x
+
+check_installed() {
+    if ! which python3.4 >/dev/null; then
+        return 1
+    fi
+    python3.4 -c 'import sys; sys.exit(0 if sys.version_info >= (3,4,1) else 1)'
+}
+
+# Already installed?
+if check_installed; then
+    exit 0
+fi
+
+# Install Python 3.4.1 or later and a compatible version of virtualenv
+case "$(lsb_release -si)" in
+Ubuntu)
+    case "$(lsb_release -sc)" in
+    precise|quantal|saucy)
+        # precise doesn't have a python3.4 package, so get it from a ppa.
+        apt-add-repository -y ppa:fkrull/deadsnakes
+        apt-get -qy update
+        apt-get -qy install python3.4-dev
+
+        # The official Ubuntu python-virtualenv package doesn't work with the
+        # above python package, so just pip install virtualenv system-wide.
+        pip install virtualenv
+        ;;
+    *)
+        # Other Ubuntu.  Assume these packages exist.
+        apt-get -qy install python3.4-dev python-virtualenv
+        ;;
+    esac
+    ;;
+Debian)
+    case "$(lsb_release -sc)" in
+    wheezy)
+        #apt-get -qy install devscripts debian-keyring
+        #install -m0700 -d /.gnupg   # make sure /.gnupg exists, or dget will
+                                    # fail to validate the package
+        #dget --build http://http.debian.net/debian/pool/main/p/python3.4/python3.4_3.4.1-10.dsc
+
+        apt-get -qy install apt-src
+
+        # Add 'deb-src' lines to /etc/apt/sources.list
+        sed -E -i -e '/^deb /{p;s/^deb /deb-src /;s/wheezy/jessie/g}' /etc/apt/sources.list
+        apt-src update
+
+        cd /usr/src
+        apt-src install --build dpkg-dev
+        apt-src install --build python3.4
+        ;;
+    *)
+        # Other Debian.  Assume these packages exist.
+        apt-get -qy install python3.4-dev virtualenv
+        ;;
+    esac
+    ;;
+esac
+
+# Last-ditch effort.  Assume something Debian-based
+if ! check_installed; then
+    apt-get -qy install python3.4-dev virtualenv
+fi
+
+# Test that it works
+check_installed || exit 1
