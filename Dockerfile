@@ -10,6 +10,9 @@ COPY docker/01proxy /etc/apt/apt.conf.d/
 COPY docker/pip.conf /.pip/pip.conf
 RUN mkdir -p /root/.pip && ln -s /.pip/pip.conf /root/.pip/pip.conf
 
+# NB: If this fails, you aren't running devpi.  See above.
+RUN curl -qs -o/dev/null http://172.17.42.1:3141/root/pypi/+simple/pip
+
 RUN echo 'deb http://http.debian.net/debian wheezy-backports main' >> /etc/apt/sources.list
 RUN echo "debconf debconf/frontend select Noninteractive" | debconf-set-selections
 RUN apt-get -qy update
