@@ -21,8 +21,9 @@ RUN apt-get -qy install eatmydata && \
 
 RUN apt-get -qy upgrade
 
-RUN apt-get -qy install \
+RUN apt-get -qy install --no-install-recommends \
    build-essential \
+   ca-certificates \
    curl \
    g++ \
    gcc \
@@ -55,7 +56,7 @@ RUN apt-get -qy install \
 #   - No DSA or ECDSA host keys (RSA & Ed25519 are safer)
 #   - Public key auth only
 #   - No (slow) DNS reverse lookups
-RUN apt-get -qy -t wheezy-backports install openssh-server
+RUN apt-get -qy -t wheezy-backports install --no-install-recommends openssh-server
 RUN rm -f /etc/ssh/ssh_host_* && \
     sed -E -i -e 's/^(HostKey .*dsa|PasswordAuthentication |ChallengeResponseAuthentication )/#\1/' /etc/ssh/sshd_config && \
     echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && \
