@@ -1,6 +1,8 @@
 import uuid
 import struct
+import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
 from bson import json_util, EPOCH_NAIVE
@@ -14,6 +16,7 @@ from sqlalchemy.interfaces import PoolListener
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.mutable import Mutable
 
+from inbox.config import config
 from inbox.util.encoding import base36encode, base36decode
 
 from inbox.log import get_logger
@@ -42,6 +45,29 @@ def after_cursor_execute(conn, cursor, statement,
         except UnicodeDecodeError:
             log.warning('slow query', query_time=total)
             log.error('logging UnicodeDecodeError')
+
+
+@contextmanager
+def session_wrapper(session):
+    try:
+        if config.get('LOG_DB_SESSIONS'):
+            start_time = time.time()
+            calling_frame = sys._getframe().f_back.f_back
+            call_loc = '{}:{}'.format(calling_frame.f_globals.get('__name__'),
+                                      calling_frame.f_lineno)
+            logger = log.bind(session_id=id(session), call_loc=call_loc)
+            logger.info('creating db_session')
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        if config.get('LOG_DB_SESSIONS'):
+            lifetime = time.time() - start_time
+            logger.info('closing db_session', lifetime=lifetime)
+        session.close()
+
 
 
 # Column Types

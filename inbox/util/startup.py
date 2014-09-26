@@ -53,8 +53,10 @@ def check_requirements(requirements_path):
 
 def check_db():
     """ Checks the database revision against the known alembic migrations. """
-    from inbox.ignition import main_engine
-    inbox_db_engine = main_engine(pool_size=1, max_overflow=0)
+    from inbox.ignition import make_engine
+    from inbox.sharding import default_shard_uri
+    inbox_db_engine = make_engine(default_shard_uri(), pool_size=1,
+                                  max_overflow=0)
 
     # top-level, with setup.sh
     alembic_ini_filename = _absolute_path('../../alembic.ini')

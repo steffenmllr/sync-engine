@@ -7,6 +7,7 @@ from inbox.models.backends.gmail import GmailAccount
 from inbox.config import config
 from inbox.auth.oauth import connect_account as oauth_connect_account
 from inbox.auth.oauth import verify_account as oauth_verify_account
+from inbox.sharding import add_namespace
 
 from inbox.log import get_logger
 log = get_logger()
@@ -36,14 +37,14 @@ def _this_module():
     return sys.modules[__name__]
 
 
-def create_auth_account(db_session, email_address, token, exit):
+def create_auth_account(ns_manager_session, email_address, token, exit):
     uri = config.get('GOOGLE_OAUTH_REDIRECT_URI', None)
 
     if uri != 'urn:ietf:wg:oauth:2.0:oob':
         raise NotImplementedError('Callback-based OAuth is not supported')
 
     response = auth_account(email_address, token, exit)
-    account = create_account(db_session, response)
+    account = create_account(ns_manager_session, response)
 
     return account
 
@@ -54,15 +55,15 @@ def auth_account(email_address, token, exit):
     return oauth_authorize_console(_this_module(), email_address, token, exit)
 
 
-def create_account(db_session, response):
+def create_account(ns_manager_session, response):
     email_address = response.get('email')
     # See if the account exists in db, otherwise create it
     try:
-        account = db_session.query(GmailAccount) \
+        account = ns_manager_session.query(GmailAccount) \
             .filter_by(email_address=email_address).one()
     except NoResultFound:
-        namespace = Namespace()
-        account = GmailAccount(namespace=namespace)
+        namespace = add_namespace(ns_manager_session)
+        account = GmailAccount(namespace=namespace, id=namespace.id)
 
     # We only get refresh tokens on initial login (or failed credentials)
     # otherwise, we don't force the login screen and therefore don't get a

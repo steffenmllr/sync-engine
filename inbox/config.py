@@ -4,7 +4,8 @@ import yaml
 from urllib import quote_plus as urlquote
 
 
-__all__ = ['config', 'engine_uri', 'db_uri']
+__all__ = ['config', 'db_uri', 'master_db_uri', 'shard_uri',
+           'default_shard_uri']
 
 
 class ConfigError(Exception):
@@ -39,35 +40,30 @@ else:
 
 if env == 'prod':
     config_path = '/etc/inboxapp/config.json'
+    sharding_path = '/etc/inboxapp/sharding.json'
     secrets_path = '/etc/inboxapp/secrets.yml'
 else:
-    root_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
+    root = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
 
-    config_path = os.path.join(root_path, 'etc', 'config-{0}.json'.format(env))
-    secrets_path = os.path.join(root_path, 'etc',
-                                'secrets-{0}.yml'.format(env))
+    config_path = os.path.join(root, 'etc', 'config-{0}.json'.format(env))
+    sharding_path = os.path.join(root, 'etc', 'sharding-{0}.json'.format(env))
+    secrets_path = os.path.join(root, 'etc', 'secrets-{0}.yml'.format(env))
 
-
-with open(config_path) as f:
-    config = Configuration(json.load(f))
 
 try:
+    with open(config_path) as f:
+        config = Configuration(json.load(f))
+
     with open(secrets_path) as f:
-        secrets_config = Configuration(yaml.safe_load(f))
-        config.update(secrets_config)
+        config.update(yaml.safe_load(f))
+
+    with open(sharding_path) as f:
+        config.update(json.load(f))
 except IOError:
-    raise Exception(
-        'Missing secrets config file {0}. Run `sudo cp etc/secrets-dev.yml '
-        '/etc/inboxapp/secrets.yml` and retry'.format(secrets_path))
+    raise Exception('Missing config file.')
 
 
-def engine_uri(database=None):
-    """ By default doesn't include the specific database. """
-    username = config.get_required('MYSQL_USER')
-    password = config.get_required('MYSQL_PASSWORD')
-    host = config.get_required('MYSQL_HOSTNAME')
-    port = config.get_required('MYSQL_PORT')
-
+def db_uri(username, password, host, port, database):
     uri_template = 'mysql+pymysql://{username}:{password}@{host}' +\
                    ':{port}/{database}?charset=utf8mb4'
 
@@ -77,9 +73,28 @@ def engine_uri(database=None):
         password=urlquote(password),
         host=host,
         port=port,
-        database=database if database else '')
+        database=database)
 
 
-def db_uri():
-    database = config.get_required('MYSQL_DATABASE')
-    return engine_uri(database)
+def master_db_uri():
+    username = config.get_required('MASTER_USER')
+    password = config.get_required('MASTER_PASSWORD')
+    host = config.get_required('MASTER_HOSTNAME')
+    port = config.get_required('MASTER_PORT')
+    database = config.get_required('MASTER_DATABASE')
+    return db_uri(username, password, host, port, database)
+
+
+def shard_uri(shard_key):
+    shard_data = config.get_required('SHARD_MAP')[shard_key]
+    username = shard_data['USERNAME']
+    password = shard_data['PASSWORD']
+    host = shard_data['HOSTNAME']
+    port = shard_data['PORT']
+    database = shard_data['DATABASE']
+    return db_uri(username, password, host, port, database)
+
+
+def default_shard_uri():
+    default_shard_key = config.get_required('DEFAULT_SHARD_KEY')
+    return shard_uri(default_shard_key)

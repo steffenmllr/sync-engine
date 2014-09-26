@@ -12,19 +12,19 @@ log = get_logger()
 from inbox.basicauth import password_auth
 from inbox.basicauth import (ConnectionError, ValidationError,
                              TransientConnectionError)
-from inbox.models import Namespace
 from inbox.models.backends.generic import GenericAccount
 from inbox.models.account import Account
 from inbox.providers import provider_info
 from inbox.util.url import provider_from_address
 from inbox.basicauth import NotSupportedError
+from inbox.sharding import add_namespace
 
 PROVIDER = 'generic'
 
 
-def create_auth_account(db_session, email_address, token, exit):
+def create_auth_account(ns_manager_session, email_address, token, exit):
     response = auth_account(email_address, token, exit)
-    account = create_account(db_session, email_address, response)
+    account = create_account(ns_manager_session, email_address, response)
 
     return account
 
@@ -33,17 +33,17 @@ def auth_account(email_address, token, exit):
     return password_auth(email_address, token, exit)
 
 
-def create_account(db_session, email_address, response):
+def create_account(ns_manager_session, email_address, response):
     provider_name = provider_from_address(email_address)
     if provider_name == "unknown":
         raise NotSupportedError('Inbox does not support the email provider.')
 
     try:
-        account = db_session.query(GenericAccount).filter_by(
+        account = ns_manager_session.query(GenericAccount).filter_by(
             email_address=email_address).one()
     except sqlalchemy.orm.exc.NoResultFound:
-        namespace = Namespace()
-        account = GenericAccount(namespace=namespace)
+        namespace = add_namespace(ns_manager_session)
+        account = GenericAccount(namespace=namespace, id=namespace.id)
 
     account.email_address = response['email']
     account.password = response['password']

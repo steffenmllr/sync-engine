@@ -1,7 +1,11 @@
 {
-"MYSQL_DATABASE": "inbox",
-"MYSQL_HOSTNAME": "localhost",
-"MYSQL_PORT": 3306,
+"MASTER_DATABASE": "inbox",
+"MASTER_HOSTNAME": "localhost",
+"MASTER_PORT": 3306,
+
+"DEFAULT_SHARD_DATABASE": "inbox",
+"DEFAULT_SHARD_HOSTNAME": "localhost",
+"DEFAULT_SHARD_PORT": 3306,
 
 "DB_POOL_SIZE": 25,
 

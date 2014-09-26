@@ -2,20 +2,67 @@
 import os
 import click
 import sqlalchemy
+from urllib import quote_plus as urlquote
 
 from alembic.config import Config as alembic_config
 from alembic import command as alembic_command
 
-from inbox.config import engine_uri, config
+from inbox.config import config, db_uri
 
-from inbox.ignition import init_db
-from inbox.ignition import main_engine
+from inbox.ignition import init_mailsync_db, init_master_db
+from inbox.sharding import default_shard_engine
 from inbox.sqlalchemy_ext.util import ForceStrictMode
 
-inbox_db_engine = main_engine(pool_size=1)
+shard_engine = default_shard_engine()
 
-basic_engine = sqlalchemy.create_engine(
-    engine_uri(), listeners=[ForceStrictMode()], echo=False)
+
+def create_database(username, password, host, port, database):
+    uri = db_uri(
+        username=username,
+        # http://stackoverflow.com/a/15728440 (also applicable to '+' sign)
+        password=urlquote(password),
+        host=host,
+        port=port,
+        database='')
+
+    basic_engine = sqlalchemy.create_engine(
+        uri, listeners=[ForceStrictMode()], echo=False)
+
+    basic_engine.execute("CREATE DATABASE IF NOT EXISTS {} DEFAULT CHARACTER "
+                         "SET utf8mb4 DEFAULT COLLATE utf8mb4_general_ci;".
+                         format(database))
+    basic_engine.execute("GRANT ALL PRIVILEGES ON {database}.* TO "
+                         "{user}@localhost IDENTIFIED BY '{user}'".
+                         format(user=username, database=database))
+
+
+def create_master_database():
+    user = config.get_required('MASTER_USER')
+    password = config.get_required('MASTER_PASSWORD')
+    host = config.get_required('MASTER_HOSTNAME')
+    port = config.get_required('MASTER_PORT')
+    database = config.get_required('MASTER_DATABASE')
+    create_database(user, password, host, port, database)
+
+
+def create_shard_database():
+    shard_key = config.get_required('DEFAULT_SHARD_KEY')
+    shard_data = config.get_required('SHARD_MAP')[shard_key]
+    user = shard_data['USERNAME']
+    password = shard_data['PASSWORD']
+    host = shard_data['HOSTNAME']
+    port = shard_data['PORT']
+    database = shard_data['DATABASE']
+    create_database(user, password, host, port, database)
+
+
+def create_test_database():
+    user = 'inboxtest'
+    password = 'inboxtest'
+    host = 'localhost'
+    port = 3306
+    database = 'test'
+    create_database(user, password, host, port, database)
 
 
 @click.command()
@@ -26,29 +73,17 @@ def main(prod):
 
     if not prod:
         print 'Creating database: test'
-        basic_engine.execute(
-            "CREATE DATABASE IF NOT EXISTS test DEFAULT CHARACTER SET utf8mb4 "
-            "DEFAULT COLLATE utf8mb4_general_ci")
-        basic_engine.execute("GRANT ALL PRIVILEGES ON test.* TO "
-                             "inboxtest@localhost IDENTIFIED BY 'inboxtest'")
+        create_test_database()
 
-    mysql_user = config.get_required('MYSQL_USER')
-    mysql_database = config.get_required('MYSQL_DATABASE')
+    create_shard_database()
+    init_mailsync_db(shard_engine)
 
-    print 'Creating database: {}'.format(mysql_database)
-    basic_engine.execute("CREATE DATABASE IF NOT EXISTS {} DEFAULT CHARACTER "
-                         "SET utf8mb4 DEFAULT COLLATE utf8mb4_general_ci;".
-                         format(mysql_database))
-    basic_engine.execute("GRANT ALL PRIVILEGES ON {mysql_database}.* TO "
-                         "{mysql_user}@localhost IDENTIFIED BY '{mysql_user}'".
-                         format(mysql_user=mysql_user,
-                                mysql_database=mysql_database))
-
-    init_db(inbox_db_engine)
+    create_master_database()
+    init_master_db(shard_engine)
 
     # Stamp initial alembic revision
-    if inbox_db_engine.dialect.has_table(inbox_db_engine, "alembic_version"):
-        res = inbox_db_engine.execute(
+    if shard_engine.dialect.has_table(shard_engine, "alembic_version"):
+        res = shard_engine.execute(
             "SELECT version_num from alembic_version")
         current_revision = [r for r in res][0][0]
         assert current_revision, \

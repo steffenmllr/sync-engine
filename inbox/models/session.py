@@ -1,5 +1,3 @@
-import sys
-import time
 from contextlib import contextmanager
 
 from sqlalchemy.orm.session import Session
@@ -8,8 +6,8 @@ from sqlalchemy.orm.exc import NoResultFound
 
 import sqlalchemy.orm.query
 
-from inbox.config import config
-from inbox.ignition import main_engine
+from inbox.sharding import engine_map, default_shard_engine
+from inbox.sqlalchemy_ext.util import session_wrapper
 from inbox.log import get_logger
 log = get_logger()
 
@@ -79,14 +77,10 @@ class InboxSession(object):
         Do you want to enable the transaction log?
     ignore_soft_deletes : bool
         Whether or not to ignore soft-deleted objects in query results.
-    namespace_id : int
-        Namespace to limit query results with.
     """
-    def __init__(self, engine, versioned=True, ignore_soft_deletes=True,
-                 namespace_id=None):
-        # TODO: support limiting on namespaces
+    def __init__(self, engine, versioned=True,
+                 ignore_soft_deletes=True):
         assert engine, "Must set the database engine"
-
         args = dict(bind=engine, autoflush=True, autocommit=False)
         self.ignore_soft_deletes = ignore_soft_deletes
         if ignore_soft_deletes:
@@ -151,11 +145,18 @@ class InboxSession(object):
         return self._session.no_autoflush
 
 
-cached_engine = None
+def namespaced_session_factory(namespace_id, *args, **kwargs):
+    engine = engine_map.get(namespace_id)
+    return InboxSession(engine, *args, **kwargs)
+
+
+def default_session_factory(*args, **kwargs):
+    engine = default_shard_engine()
+    return InboxSession(engine, *args, **kwargs)
 
 
 @contextmanager
-def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
+def session_scope(versioned=True, ignore_soft_deletes=True):
     """ Provide a transactional scope around a series of operations.
 
     Takes care of rolling back failed transactions and closing the session
@@ -166,14 +167,13 @@ def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
     on the session. Your database backend's transaction semantics are important
     here when reasoning about concurrency.
 
+
     Parameters
     ----------
     versioned : bool
         Do you want to enable the transaction log?
     ignore_soft_deletes : bool
         Whether or not to ignore soft-deleted objects in query results.
-    namespace_id : int
-        Namespace to limit query results with.
 
     Yields
     ------
@@ -181,34 +181,16 @@ def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
         The created session.
     """
 
-    global cached_engine
-    if cached_engine is None:
-        cached_engine = main_engine()
-        log.info("Don't yet have engine... creating default from ignition",
-                 engine=id(cached_engine))
+    session = default_session_factory(versioned=versioned,
+                                      ignore_soft_deletes=ignore_soft_deletes)
+    with session_wrapper(session) as s:
+        yield s
 
-    session = InboxSession(cached_engine,
-                           versioned=versioned,
-                           ignore_soft_deletes=ignore_soft_deletes,
-                           namespace_id=namespace_id)
-    try:
-        if config.get('LOG_DB_SESSIONS'):
-            start_time = time.time()
-            calling_frame = sys._getframe().f_back.f_back
-            call_loc = '{}:{}'.format(calling_frame.f_globals.get('__name__'),
-                                      calling_frame.f_lineno)
-            logger = log.bind(engine_id=id(cached_engine),
-                              session_id=id(session), call_loc=call_loc)
-            logger.info('creating db_session',
-                        sessions_used=cached_engine.pool.checkedout())
-        yield session
-        session.commit()
-    except:
-        session.rollback()
-        raise
-    finally:
-        if config.get('LOG_DB_SESSIONS'):
-            lifetime = time.time() - start_time
-            logger.info('closing db_session', lifetime=lifetime,
-                        sessions_used=cached_engine.pool.checkedout())
-        session.close()
+
+@contextmanager
+def namespaced_session_scope(namespace_id):
+    """Provides a session bound to the correct shard for the given
+    namespace_id. Use this if you need to look at more than just a default
+    shard (e.g., if serving the API for multiple shards)."""
+    with session_wrapper(namespaced_session_factory(namespace_id)) as s:
+        yield s

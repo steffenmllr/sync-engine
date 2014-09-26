@@ -9,9 +9,9 @@ log = get_logger()
 from inbox.auth.oauth import connect_account as oauth_connect_account
 from inbox.auth.oauth import verify_account as oauth_verify_account
 from inbox.oauth import oauth_authorize_console
-from inbox.models import Namespace
 from inbox.config import config
 from inbox.models.backends.outlook import OutlookAccount
+from inbox.sharding import add_namespace
 
 PROVIDER = 'outlook'
 
@@ -38,9 +38,9 @@ def _this_module():
     return sys.modules[__name__]
 
 
-def create_auth_account(db_session, email_address, token, exit):
+def create_auth_account(ns_manager_session, email_address, token, exit):
     response = auth_account(email_address, token, exit)
-    account = create_account(db_session, response)
+    account = create_account(ns_manager_session, response)
 
     return account
 
@@ -54,14 +54,14 @@ def auth_account(email_address, token, exit):
     return oauth_authorize_console(_this_module(), email_address, token, exit)
 
 
-def create_account(db_session, response):
+def create_account(ns_manager_session, response):
     email_address = response.get('emails')['account']
     try:
-        account = db_session.query(OutlookAccount).filter_by(
+        account = ns_manager_session.query(OutlookAccount).filter_by(
             email_address=email_address).one()
     except sqlalchemy.orm.exc.NoResultFound:
-        namespace = Namespace()
-        account = OutlookAccount(namespace=namespace)
+        namespace = add_namespace(ns_manager_session)
+        account = OutlookAccount(namespace=namespace, id=namespace.id)
 
     account.refresh_token = response['refresh_token']
     account.date = datetime.datetime.utcnow()

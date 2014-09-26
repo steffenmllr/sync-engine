@@ -23,13 +23,10 @@ from inbox import events, contacts, sendmail
 from inbox.log import get_logger
 from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.models.action_log import schedule_action, ActionError
-from inbox.models.session import InboxSession
+from inbox.models.session import default_session_factory
 from inbox.transactions import delta_sync
 
 from err import err
-
-from inbox.ignition import main_engine
-engine = main_engine()
 
 
 DEFAULT_LIMIT = 100
@@ -65,7 +62,7 @@ def pull_lang_code(endpoint, values):
 
 @app.before_request
 def start():
-    g.db_session = InboxSession(engine)
+    g.db_session = default_session_factory()
 
     g.log = get_logger()
     try:

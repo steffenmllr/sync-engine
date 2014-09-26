@@ -1,12 +1,23 @@
 import sys
 import pkgutil
 import time
-
+from functools import wraps
 from datetime import datetime
 from email.utils import parsedate_tz, mktime_tz
 
 from inbox.log import get_logger
 from inbox.providers import providers
+
+
+def cache(func):
+    _cache = {}
+
+    @wraps(func)
+    def wrapper(*args):
+        if args not in _cache:
+            _cache[args] = func(*args)
+        return _cache[args]
+    return wrapper
 
 
 def or_none(value, selector):

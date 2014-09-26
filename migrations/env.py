@@ -30,7 +30,8 @@ if context.get_tag_argument() == 'test':
 from inbox.models.base import MailSyncBase
 target_metadata = MailSyncBase.metadata
 
-from inbox.ignition import main_engine
+from inbox.ignition import make_engine
+from inbox.config import default_shard_uri
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -50,7 +51,8 @@ def run_migrations_offline():
     script output.
 
     """
-    context.configure(engine=main_engine(pool_size=1, max_overflow=0))
+    engine = make_engine(default_shard_uri(), pool_size=1, max_overflow=0)
+    context.configure(engine)
 
     with context.begin_transaction():
         context.run_migrations()
@@ -63,7 +65,7 @@ def run_migrations_online():
     and associate a connection with the context.
 
     """
-    engine = main_engine(pool_size=1, max_overflow=0)
+    engine = make_engine(default_shard_uri(), pool_size=1, max_overflow=0)
 
     connection = engine.connect()
     context.configure(

@@ -16,6 +16,10 @@ from inbox.models.calendar import Calendar
 
 
 class Account(MailSyncBase, HasPublicID, HasEmailAddress):
+    # Account ids are not autoincrementing, so that they can be unique across
+    # shards.
+    id = Column(Integer, primary_key=True, autoincrement=False)
+
     @property
     def provider(self):
         """ A constant, unique lowercase identifier for the account provider

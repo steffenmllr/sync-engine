@@ -149,8 +149,8 @@ class TestAPIClient(object):
 class TestDB(object):
     def __init__(self, config, dumpfile):
         from inbox.models.session import InboxSession
-        from inbox.ignition import main_engine
-        engine = main_engine()
+        from inbox.sharding import default_shard_engine
+        engine = default_shard_engine()
         # Set up test database
         self.session = InboxSession(engine, versioned=False)
         self.engine = engine
@@ -161,10 +161,12 @@ class TestDB(object):
         self.populate()
 
     def populate(self):
-        """ Populates database with data from the test dumpfile. """
-        database = self.config.get('MYSQL_DATABASE')
-        user = self.config.get('MYSQL_USER')
-        password = self.config.get('MYSQL_PASSWORD')
+        """ Populates database with data from the test dumpfile.
+            For now, just use the same database as master and shard for
+            tests."""
+        database = self.config.get('MASTER_DATABASE')
+        user = self.config.get('MASTER_USER')
+        password = self.config.get('MASTER_PASSWORD')
 
         cmd = 'mysql {0} -u{1} -p{2} < {3}'.format(database, user, password,
                                                    self.dumpfile)
@@ -186,7 +188,7 @@ class TestDB(object):
 
     def save(self):
         """ Updates the test dumpfile. """
-        database = self.config.get('MYSQL_DATABASE')
+        database = self.config.get('DEFAULT_SHARD_DATABASE')
 
         cmd = 'mysqldump {0} > {1}'.format(database, self.dumpfile)
         subprocess.check_call(cmd, shell=True)
