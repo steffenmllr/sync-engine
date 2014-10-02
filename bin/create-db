@@ -32,8 +32,8 @@ def main(prod):
         basic_engine.execute("GRANT ALL PRIVILEGES ON test.* TO "
                              "inboxtest@localhost IDENTIFIED BY 'inboxtest'")
 
-    mysql_user = config.get_required('MYSQL_USER')
-    mysql_database = config.get_required('MYSQL_DATABASE')
+    mysql_user = os.environ.get('MYSQL_USER','')
+    mysql_database = os.environ['MYSQL_DATABASE']
 
     print 'Creating database: {}'.format(mysql_database)
     basic_engine.execute("CREATE DATABASE IF NOT EXISTS {} DEFAULT CHARACTER "

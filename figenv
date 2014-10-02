@@ -1,0 +1,2 @@
+export FIG_FILE=fig.yml
+export DOCKER_HOST=tcp://192.168.10.200:2375

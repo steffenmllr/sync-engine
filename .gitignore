@@ -80,3 +80,9 @@ TAGS
 
 # directory used to store build files
 setup/
+
+# emacs turds
+*~
+
+# all things necessary for docker context that git should ignore
+inbox-eas

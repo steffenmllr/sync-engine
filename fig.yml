@@ -1,0 +1,28 @@
+mysql:
+  image: tutum/mysql
+  environment:
+    - MYSQL_USER=inboxuser
+    - MYSQL_PASS=fernando
+inboxstart:
+  build: .
+  volumes:
+    - /inbox:/root/inbox
+  links:
+    - mysql
+  environment:
+    - MYSQL_DATABASE=inbox
+    - MYSQL_USER=inboxuser
+    - MYSQL_PASSWORD=fernando
+  command: /root/inbox/bin/inbox-start
+
+syncbackservice:
+  build: .
+  volumes:
+    - /inbox:/root/inbox
+  links:
+    - mysql
+  environment:
+    - MYSQL_DATABASE=inbox
+    - MYSQL_USER=inboxuser
+    - MYSQL_PASSWORD=fernando
+  command: /root/inbox/bin/syncback-service

@@ -93,8 +93,7 @@ def check_db():
 
 def check_sudo():
     if os.getuid() == 0:
-        raise Exception("Don't run Inbox as root!")
-
+        log.warning("Running inbox as root can be potentially dangerous!")
 
 def git_rev():
     return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'])
