@@ -24,9 +24,8 @@ RUN apt-get -y install\
     libffi-dev \
     python-lxml \
     curl \
-    tnef
-
-RUN pip install 'setuptools>=5.3'
+    tnef && \
+    pip install 'setuptools>=5.3'
 
 ADD ./requirements.txt /root/inbox/
 
@@ -34,13 +33,11 @@ ENV INBOX_ROOT /root/inbox
 
 WORKDIR /root/inbox
 
-RUN pip install -r ./requirements.txt
-
-RUN apt-get -y purge build-essential
-RUN apt-get -y autoremove
-
-RUN mkdir -p /var/lib/inboxapp
-RUN mkdir -p /var/log/inboxapp
+RUN pip install -r ./requirements.txt && \
+    apt-get -y purge build-essential && \
+    apt-get -y autoremove && \
+    mkdir -p /var/lib/inboxapp && \
+    mkdir -p /var/log/inboxapp
 
 ADD . /root/inbox
 
@@ -51,5 +48,4 @@ ADD  ./etc/config-dev.json /etc/inboxapp/config.json
 
 ADD ./etc/secrets-dev.yml /etc/inboxapp/secrets.yml
 
-#TODO: initialize database (don't know when to do this yet)
 
