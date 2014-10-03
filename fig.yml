@@ -26,3 +26,42 @@ syncbackservice:
     - MYSQL_USER=inboxuser
     - MYSQL_PASSWORD=fernando
   command: /root/inbox/bin/syncback-service
+
+redwoodapp:
+  build: ./../share-redwood
+  volumes:
+    - /redwood:/root/redwood
+  links:
+    - mysql
+  environment:
+    - MYSQL_DATABASE=inbox
+    - MYSQL_USER=inboxuser
+    - MYSQL_PASSWORD=fernando
+    - INBOX_ENV=dev
+  command: --worker-class inbox.api.wsgi.InboxWSGIWorker --logger-class inbox.api.wsgi.GunicornLogger --workers=4 --bind unix:/var/run/inbox/redwood-api.sock redwood.api:app --access-logfile - --error-logfile -
+
+redwoodadmin:
+  build: ./../share-redwood
+  volumes:
+    - /redwood:/root/redwood
+  links:
+    - mysql
+  environment:
+    - MYSQL_DATABASE=inbox
+    - MYSQL_USER=inboxuser
+    - MYSQL_PASSWORD=fernando
+    - INBOX_ENV=dev
+  command: --worker-class inbox.api.wsgi.InboxWSGIWorker --logger-class inbox.api.wsgi.GunicornLogger --workers=4 --bind unix:/var/run/inbox/redwood-admin.sock redwood.admin:app --access-logfile - --error-logfile -
+
+redwoodweb:
+  build: ./../share-redwood
+  volumes:
+    - /redwood:/root/redwood
+  links:
+    - mysql
+  environment:
+    - MYSQL_DATABASE=inbox
+    - MYSQL_USER=inboxuser
+    - MYSQL_PASSWORD=fernando
+    - INBOX_ENV=dev
+  command: --worker-class inbox.api.wsgi.InboxWSGIWorker --logger-class inbox.api.wsgi.GunicornLogger --workers=4 --bind unix:/var/run/inbox/redwood-www.sock redwood.web:app --access-logfile - --error-logfile -

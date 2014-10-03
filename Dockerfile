@@ -23,7 +23,6 @@ libxslt-dev \
 lib32z1-dev \
 libffi-dev \
 python-lxml \
-tmux \
 curl \
 tnef 
 
@@ -37,18 +36,15 @@ WORKDIR /root/inbox
 
 RUN pip install -r ./requirements.txt
 
-ADD . /root/inbox
-
-RUN pip install -e .
-
-RUN ./install_inbox_eas.sh
-
 RUN apt-get -y purge build-essential
 RUN apt-get -y autoremove
 
 RUN mkdir -p /var/lib/inboxapp
 RUN mkdir -p /var/log/inboxapp
 
+ADD . /root/inbox
+
+RUN pip install -e .
 # Imporant to leave the configuration file provisioning till last
 
 ADD  ./etc/config-dev.json /etc/inboxapp/config.json

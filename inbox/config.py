@@ -64,10 +64,9 @@ except IOError:
 def engine_uri(database=None):
     """ By default doesn't include the specific database. """
 
-    username = os.environ.get('MYSQL_USER','')
-    password = os.environ.get('MYSQL_PASSWORD','')
+    username = os.environ['MYSQL_USER']
+    password = os.environ['MYSQL_PASSWORD']
 
-    # we want key errors if host/port aren't specified
     host = os.environ['MYSQL_PORT_3306_TCP_ADDR']
     port = os.environ['MYSQL_PORT_3306_TCP_PORT']
 
