@@ -3,28 +3,28 @@ FROM ubuntu:14.04
 MAINTAINER InboxApp
 RUN apt-get update
 
-RUN apt-get -y install \
-python-software-properties \
-git \
-wget \
-supervisor \
-mysql-client \
-python \
-python-dev \
-python-pip \
-python-setuptools \
-build-essential \
-libmysqlclient-dev \
-gcc \
-g++ \
-libzmq-dev \
-libxml2-dev \
-libxslt-dev \
-lib32z1-dev \
-libffi-dev \
-python-lxml \
-curl \
-tnef 
+RUN apt-get -y install\
+    python-software-properties\
+    git \
+    wget \
+    supervisor \
+    mysql-client \
+    python \
+    python-dev \
+    python-pip \
+    python-setuptools \
+    build-essential \
+    libmysqlclient-dev \
+    gcc \
+    g++ \
+    libzmq-dev \
+    libxml2-dev \
+    libxslt-dev \
+    lib32z1-dev \
+    libffi-dev \
+    python-lxml \
+    curl \
+    tnef
 
 RUN pip install 'setuptools>=5.3'
 

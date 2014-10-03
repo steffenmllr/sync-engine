@@ -3,8 +3,9 @@ mysql:
   environment:
     - MYSQL_USER=inboxuser
     - MYSQL_PASS=fernando
+
 inboxstart:
-  build: .
+  build: ./../share-inbox-eas
   volumes:
     - /inbox:/root/inbox
   links:
@@ -16,7 +17,7 @@ inboxstart:
   command: /root/inbox/bin/inbox-start
 
 syncbackservice:
-  build: .
+  build: ./../share-inbox-eas
   volumes:
     - /inbox:/root/inbox
   links:
