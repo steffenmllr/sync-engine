@@ -38,12 +38,14 @@ redwoodapp:
     - /redwood:/root/redwood
   links:
     - mysql
+  ports:
+    - 5001:5001
   environment:
     - MYSQL_DATABASE=inbox
     - MYSQL_USER=inboxuser
     - MYSQL_PASSWORD=fernando
     - INBOX_ENV=dev
-  command: /usr/local/bin/gunicorn --worker-class inbox.api.wsgi.InboxWSGIWorker --logger-class inbox.api.wsgi.GunicornLogger --workers=4 --bind unix:/var/run/inbox/redwood-api.sock redwood.api:app --access-logfile - --error-logfile -
+  command: /root/redwood/bin/redwood-start api
 
 redwoodadmin:
   build: ./../share-redwood
@@ -53,12 +55,14 @@ redwoodadmin:
     - /redwood:/root/redwood
   links:
     - mysql
+  ports:
+    - 5002:5002
   environment:
     - MYSQL_DATABASE=inbox
     - MYSQL_USER=inboxuser
     - MYSQL_PASSWORD=fernando
     - INBOX_ENV=dev
-  command: /usr/local/bin/gunicorn --worker-class inbox.api.wsgi.InboxWSGIWorker --logger-class inbox.api.wsgi.GunicornLogger --workers=4 --bind unix:/var/run/inbox/redwood-admin.sock redwood.admin:app --access-logfile - --error-logfile -
+  command: /root/redwood/bin/redwood-start admin 
 
 redwoodweb:
   build: ./../share-redwood
@@ -68,9 +72,11 @@ redwoodweb:
     - /redwood:/root/redwood
   links:
     - mysql
+  ports:
+    - 5000:5000
   environment:
     - MYSQL_DATABASE=inbox
     - MYSQL_USER=inboxuser
     - MYSQL_PASSWORD=fernando
     - INBOX_ENV=dev
-  command: /usr/local/bin/gunicorn --worker-class inbox.api.wsgi.InboxWSGIWorker --logger-class inbox.api.wsgi.GunicornLogger --workers=4 --bind unix:/var/run/inbox/redwood-www.sock redwood.web:app --access-logfile - --error-logfile -
+  command: /root/redwood/bin/redwood-start web
