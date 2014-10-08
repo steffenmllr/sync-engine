@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+import click
+from inbox.models import Namespace
+from inbox.models.backends.imap import ImapThread
+from inbox.models.session import session_scope
+from inbox.ignition import main_engine
+
+
+def fix_namespace(namespace_id, dry_run):
+    with main_engine().begin() as conn:
+        # Can't figure out how to make sqlalchemy give me this.
+        duplicate_g_thrids = [g_thrid for g_thrid, in conn.execute('''
+            SELECT g_thrid FROM
+                (SELECT count(*) as cnt, g_thrid FROM imapthread JOIN thread ON imapthread.id=thread.id
+                    WHERE thread.namespace_id={} AND g_thrid IS NOT NULL
+                    GROUP BY g_thrid) AS t WHERE cnt>1'''.format(namespace_id)).fetchall()]
+
+    print "affected g_thrids: ", duplicate_g_thrids
+
+    with session_scope(ignore_soft_deletes=False) as db_session:
+        for g_thrid in duplicate_g_thrids:
+            split_threads = db_session.query(ImapThread).filter(
+                ImapThread.namespace_id == namespace_id,
+                ImapThread.g_thrid == g_thrid).all()
+            assert len(split_threads) >= 2
+            if len(split_threads) > 2:
+                print "More than two thread rows found with g_thrid {}; " \
+                      "skipping".format(g_thrid)
+                continue
+
+            # Figure out which is the thread object we first created, and which
+            # is the one we created during sync
+            created_thread = None
+            for i, thread in enumerate(split_threads):
+                if len(thread.messages) == 1 and thread.messages[0].is_created:
+                    created_thread = thread
+                    synced_thread = split_threads[1-i]
+            if created_thread is None:
+                print "Couldn't find suitable created thread for g_thrid {}; "\
+                      "skipping".format(g_thrid)
+                continue
+
+            message = created_thread.messages[0]
+            print "Merging message {} from thread {} into thread {}".format(
+                message.id, created_thread.id, synced_thread.id)
+            for folder in created_thread.folders:
+                if folder not in synced_thread.folders:
+                    print "would add folder {}".format(folder.name)
+            if not dry_run:
+                message.thread = synced_thread
+                # Merge folders, cascades to tag updates as well.
+                for folder in created_thread.folders:
+                    synced_thread.folders.add(folder)
+                # Delete dangling thread
+                db_session.delete(created_thread)
+
+
+@click.command()
+@click.option('--namespace_id')
+@click.option('--dry_run', default=False, is_flag=True)
+def main(namespace_id, dry_run):
+    if namespace_id is not None:
+        namespace_id = int(namespace_id)
+        fix_namespace(namespace_id, dry_run)
+    else:
+        with session_scope() as db_session:
+            namespace_ids = [ns_id for ns_id, in
+                             db_session.query(Namespace.id)]
+        for namespace_id in namespace_ids:
+            print "handling namespace {}".format(namespace_id)
+            fix_namespace(namespace_id, dry_run)
+
+
+if __name__ == '__main__':
+    main()
