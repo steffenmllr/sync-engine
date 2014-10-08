@@ -1,2 +1,17 @@
 export FIG_FILE=fig.yml
-export DOCKER_HOST=tcp://192.168.10.200:2375
+
+vagrant_path=./.vagrant
+if boot2docker status &> /dev/null; then
+    echo "Using boot2docker config"
+    ip_addr=$(boot2docker ip 2>/dev/null)
+    echo "Found boot2docker ip address ${ip_addr}"
+    export DOCKER_HOST=tcp://${ip_addr}:2375
+else
+	if [ -e "${vagrant_path}" ]; then
+	    echo "Detected .vagrant directory, using assuming vagrant host information"
+	    export DOCKER_HOST=tcp://192.168.10.200:2375
+	else
+	    >&2 echo "Uh-oh, we can't find a boot2docker instance or a .vagrant folder!"
+	    >&2 echo "fig remains configured! Are you in the right directory?"
+	fi
+fi
