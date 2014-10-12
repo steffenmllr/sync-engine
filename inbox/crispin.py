@@ -653,10 +653,7 @@ class GmailCrispinClient(CondStoreCrispinClient):
         """ Gmail-specific list of folders to sync.
 
         In Gmail, every message is a subset of All Mail, with the exception of
-        the Trash and Spam folders. So we only sync All Mail, Trash, Spam,
-        and Inbox (for quickly downloading initial inbox messages and
-        continuing to receive new Inbox messages while a large mail archive is
-        downloading).
+        the Trash and Spam folders. So we only sync All Mail, Trash, Spam.
 
         Returns
         -------
@@ -670,7 +667,7 @@ class GmailCrispinClient(CondStoreCrispinClient):
                 "Please enable at "
                 "https://mail.google.com/mail/#settings/labels"
                 .format(self.account_id, self.email_address))
-        folders = [self.folder_names()['inbox'], self.folder_names()['all']]
+        folders = [self.folder_names()['all']]
         # Non-essential folders, so don't error out if they're not present.
         for tag in ('trash', 'spam'):
             if tag in self.folder_names():
@@ -797,19 +794,14 @@ class GmailCrispinClient(CondStoreCrispinClient):
                                                    'X-GM-THRID']).iteritems()])
 
     def expand_thread(self, g_thrid):
-        """ Find all message UIDs in this account with X-GM-THRID equal to
-        g_thrid.
-
-        Requires the "All Mail" folder to be selected.
+        """ Find all message UIDs in the selected folder with X-GM-THRID equal
+        to g_thrid.
 
         Returns
         -------
         list
             All Mail UIDs (as integers), sorted most-recent first.
         """
-        assert self.selected_folder_name == self.folder_names()['all'], \
-            "must select All Mail first ({})".format(
-                self.selected_folder_name)
         criterion = 'X-GM-THRID {}'.format(g_thrid)
         uids = [long(uid) for uid in self.conn.search(['NOT DELETED',
                                                        criterion])]
