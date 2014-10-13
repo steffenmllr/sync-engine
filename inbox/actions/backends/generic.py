@@ -193,7 +193,6 @@ def set_remote_trash(account, thread_id, trash, db_session):
         # proxy.
         folders = [folder for folder in thread.folders]
 
-        assert len(folders) == 1, "A thread belongs to only one folder"
         # Arbitrarily pick the first folder since there's no support for
         # threads belonging to multiple folders on non-gmail backends.
         return remote_move(account, thread_id, folders[0].name,
