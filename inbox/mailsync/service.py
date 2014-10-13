@@ -190,41 +190,41 @@ class SyncService(object):
         If that account doesn't exist, does nothing.
 
         """
+
+        # Send the shutdown command to local monitors
+        self.log.info('Stopping monitors', account_id=account_id)
+
+        # XXX Can processing this command fail in some way?
+        self.monitors[account_id].shutdown.set()
+        del self.monitors[account_id]
+
+        # Stop contacts sync if necessary
+        if account_id in self.contact_sync_monitors:
+            self.contact_sync_monitors[account_id].shutdown.set()
+            del self.contact_sync_monitors[account_id]
+
+        # Stop events sync if necessary
+        if account_id in self.event_sync_monitors:
+            self.event_sync_monitors[account_id].shutdown.set()
+            del self.event_sync_monitors[account_id]
+
+        fqdn = platform.node()
+
+        # Update the state in the database (if necessary)
         with session_scope() as db_session:
             acc = db_session.query(Account).get(account_id)
             if acc is None:
                 self.log.error('No such account', account_id=account_id)
-                return
-            fqdn = platform.node()
-            if (acc.id not in self.monitors) or \
-                    (not acc.sync_enabled):
-                self.log.info('Sync not local', account_id=account_id)
-            try:
-                if acc.sync_host is None:
-                    self.log.info('Sync not enabled', account_id=account_id)
-                elif acc.sync_host == fqdn:
-                    acc.sync_stopped()
-                    db_session.add(acc)
-                    db_session.commit()
-                else:
-                    self.log.error('Sync Host Mismatch',
-                                   message='acct.sync_host ({}) != FQDN ({})'
-                                           .format(acc.sync_host, fqdn),
-                                   account_id=account_id)
-
-                # XXX Can processing this command fail in some way?
-                self.monitors[acc.id].inbox.put_nowait('shutdown')
-
+            elif acc.sync_host is None:
+                self.log.info('Sync not enabled', account_id=account_id)
+            elif acc.sync_host != fqdn:
+                self.log.error('Sync Host Mismatch',
+                               message='acct.sync_host ({}) != FQDN ({})'
+                                       .format(acc.sync_host, fqdn),
+                               account_id=account_id)
+            else:
+                self.log.info('sync stopped', account_id=account_id)
                 if acc.is_sync_locked:
                     acc.sync_unlock()
-
-                del self.monitors[acc.id]
-                # Also stop contacts sync (only relevant for Gmail
-                # accounts)
-                if acc.id in self.contact_sync_monitors:
-                    del self.contact_sync_monitors[acc.id]
-                if acc.id in self.event_sync_monitors:
-                    del self.event_sync_monitors[acc.id]
-                self.log.info('sync stopped', account_id=account_id)
-            except Exception as e:
-                self.log.error('error encountered', msg=e.message)
+                acc.sync_stopped()
+                db_session.commit()
