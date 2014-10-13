@@ -20,8 +20,8 @@ from inbox.auth.outlook import create_auth_account as create_outlook_account
 try:
     from accounts import credentials as raw_credentials
     credentials = [(c['user'], c['password']) for c in raw_credentials]
-    all_accounts = [InboxTestClient(email) for email, _ in credentials]
-    gmail_accounts = [InboxTestClient(email)
+    all_accounts = [InboxTestClient(email, API_BASE) for email, _ in credentials]
+    gmail_accounts = [InboxTestClient(email, API_BASE)
                       for email, password in credentials
                           if "gmail.com" in email]
 except ImportError:
