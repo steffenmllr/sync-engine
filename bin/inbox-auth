@@ -37,10 +37,12 @@ def main(email_address, token, exit_after_link, reauth):
                 account = create_account(db_session, email_address,
                                          token, exit_after_link)
             else:
-                sys.exit('Already have this account!')
+                print 'Have this account, still creating'
         except NoResultFound:
-            account = create_account(db_session, email_address,
-                                     token, exit_after_link)
+            print 'NoResultFound, therefore creating'
+
+        account = create_account(db_session, email_address,
+                                 token, exit_after_link)
 
         try:
             if auth_handler.verify_account(account):
