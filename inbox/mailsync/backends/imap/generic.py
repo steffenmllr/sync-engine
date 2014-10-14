@@ -360,6 +360,8 @@ class FolderSyncEngine(Greenlet):
                 if parent_message_count < MAX_THREAD_LENGTH:
                     construct_new_thread = False
 
+            new_uid.labels = {"labels": [folder.name]}
+
             if construct_new_thread:
                 new_uid.message.thread = ImapThread.from_imap_message(
                     db_session, new_uid.account.namespace, new_uid.message)
