@@ -105,7 +105,7 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
             thread = item.message.thread
             if hasattr(new_flags[item.msg_uid], 'labels'):
                 labels = new_flags[item.msg_uid].labels
-                item.labels = {"labels": [label for label in labels]}
+                item.labels = [label for label in labels]
                 update_thread_labels(thread, folder_name, labels, session)
             else:
                 labels = None
@@ -174,10 +174,10 @@ def remove_messages(account_id, session, uids, folder):
                 most_recent_message = thread.messages[-1]
                 mrm_folders = [uid.folder
                                for uid in most_recent_message.imapuids]
-                thread_folders = [folder for folder in thread.folders]
-                for folder in thread_folders:
-                    if folder not in mrm_folders:
-                        thread.folders.discard(folder)
+                thread_folders = [fld for fld in thread.folders]
+                for fld in thread_folders:
+                    if fld not in mrm_folders:
+                        thread.folders.discard(fld)
 
         session.commit()
 

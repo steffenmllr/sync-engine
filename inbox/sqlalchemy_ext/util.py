@@ -127,13 +127,15 @@ class MutableDict(Mutable, dict):
         self.update(state)
 
 
-class MutationList(Mutable, list):
+class MutableList(Mutable, list):
     @classmethod
     def coerce(cls, key, value):
-        """Convert plain list to MutationList"""
+        """Convert plain list to MutableList"""
         if not isinstance(value, MutableList):
             if isinstance(value, list):
-                self = MutationList(value)
+                return MutableList(value)
+
+            # this call will raise ValueError
             return Mutable.coerce(key, value)
         else:
             return value
