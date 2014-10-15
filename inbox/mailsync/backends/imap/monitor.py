@@ -16,23 +16,23 @@ log = get_logger()
 
 
 class ImapSyncMonitor(BaseMailSyncMonitor):
-    """ Top-level controller for an account's mail sync. Spawns individual
-        FolderSync greenlets for each folder.
+    """
+    Top-level controller for an account's mail sync. Spawns individual
+    FolderSync greenlets for each folder.
 
-        Parameters
-        ----------
-        poll_frequency: Integer
-            Seconds to wait between polling for the greenlets spawned
-        heartbeat: Integer
-            Seconds to wait between checking on folder sync threads.
-        refresh_flags_max: Integer
-            the maximum number of UIDs for which we'll check flags
-            periodically.
+    Parameters
+    ----------
+    poll_frequency: Integer
+        Seconds to wait between polling for the greenlets spawned
+    heartbeat: Integer
+        Seconds to wait between checking on folder sync threads.
+    refresh_flags_max: Integer
+        the maximum number of UIDs for which we'll check flags
+        periodically.
 
     """
     def __init__(self, account, heartbeat=1, poll_frequency=30,
                  retry_fail_classes=[], refresh_flags_max=2000):
-
         self.poll_frequency = poll_frequency
         self.syncmanager_lock = db_write_lock(account.namespace.id)
         self.refresh_flags_max = refresh_flags_max

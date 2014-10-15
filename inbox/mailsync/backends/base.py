@@ -241,19 +241,18 @@ class BaseMailSyncMonitor(Greenlet):
 
         while not sync.ready():
             if self.shutdown.is_set():
-                # ctrl-c, basically!
-                self.log.info("Stopping sync", email=self.email_address)
-                # make sure the parent can't start/stop any folder monitors
+                # Ctrl-c, basically!
+                self.log.info('Stopping sync', email=self.email_address)
+                # Make sure the parent can't start/stop any folder monitors
                 # first
                 sync.kill(block=True)
-                self.folder_monitors.kill()
-                return
+
+                return self.cleanup()
             else:
                 sleep(self.heartbeat)
 
         if sync.successful():
-            self.folder_monitors.kill()
-            return
+            return self.cleanup()
 
         # We just want the name of the exception so don't bother with
         # sys.exc_info()
@@ -265,7 +264,7 @@ class BaseMailSyncMonitor(Greenlet):
 
     def process_command(self, cmd):
         """ Returns True if successful, or False if process should abort. """
-        self.log.info("processing command {0}".format(cmd))
+        self.log.info('processing command', cmd=cmd)
         return cmd != 'shutdown'
 
     def _thread_finished(self, thread):
@@ -278,3 +277,6 @@ class BaseMailSyncMonitor(Greenlet):
 
     def sync(self):
         raise NotImplementedError
+
+    def cleanup(self):
+        self.folder_monitors.kill()
