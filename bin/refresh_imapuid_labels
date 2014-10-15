@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+# fill-out the "labels" field for all the imapuids in the db.
+
+import gevent
+from gevent import monkey; monkey.patch_all()
+from inbox.util.itert import chunk
+from inbox.mailsync.backends.imap.generic import uidvalidity_cb
+from inbox.crispin import connection_pool
+from inbox.models.session import session_scope
+from inbox.models import Account, Folder
+from inbox.models.backends.imap import ImapUid
+
+
+def gmail_updater():
+    with session_scope() as db_session:
+        accounts = db_session.query(Account).filter(
+            Account.discriminator =='gmailaccount')
+
+    for account in accounts:
+        with session_scope() as db_session:
+            folders = db_session.query(Folder).filter(
+                Folder.account_id == account.id)
+
+        for folder in folders:
+            # FIXME: I HAVE NO IDEA WHAT I'M DOING - how does this pool thing
+            # work? Does it even block?
+            with connection_pool(account.id).get() as crispin_client:
+                crispin_client.select_folder(
+                    folder.name,
+                    uidvalidity_cb)
+
+                greenlet = gevent.spawn(labels_updater, crispin_client, folder)
+                # Block, otherwise getting an error about a socket being reused.
+                greenlet.join()
+
+
+def labels_updater(crispin_client, folder):
+    """Updates labels for a given folder"""
+    UIDS_CHUNK = 20
+    with session_scope() as db_session:
+        folder_uids = db_session.query(ImapUid).filter(
+            ImapUid.folder_id == folder.id)
+
+        for uid_chunk in chunk(folder_uids, UIDS_CHUNK):
+            uids_table = {uid.msg_uid: uid for uid in uid_chunk}
+
+            uids = [uid.msg_uid for uid in uid_chunk]
+            flags = crispin_client.flags(uids)
+            for uid in flags:
+                if flags[uid].labels is not None and uid in uids_table:
+                    uids_table[uid].labels = [label for label in flags[uid].labels]
+
+        db_session.commit()
+
+
+def generic_updater():
+    """Updates non-gmail accounts. No need to talk to a server in this case. This
+       could have been an SQL query but who wants to generate text in SQL?"""
+    with session_scope() as db_session:
+        accounts = db_session.query(Account).filter(
+            Account.discriminator != 'gmailaccount')
+
+    for account in accounts:
+        with session_scope() as db_session:
+            uids = db_session.query(ImapUid).filter(
+                    ImapUid.account_id == account.id)
+
+            for uid in uids:
+                if uid.folder is not None:
+                    print uid.folder.name
+                    uid.labels = [uid.folder.name]
+
+            db_session.commit()
+
+if __name__ == '__main__':
+    gmail_updater()
+    generic_updater()
