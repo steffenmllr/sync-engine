@@ -639,8 +639,11 @@ class CondStoreCrispinClient(CrispinClient):
 
     @timed
     def new_and_updated_uids(self, modseq):
-        return sorted([long(s) for s in self.conn.search(
-            ['NOT DELETED', "MODSEQ {}".format(modseq)])])
+        resp = self.conn.fetch('1:*', ['FLAGS'],
+                               modifiers=['CHANGEDSINCE {}'.format(modseq)])
+        # TODO(emfree): It may be useful to hold on to the whole response here,
+        # and not just the UIDs.
+        return sorted(resp.keys())
 
 
 class GmailCrispinClient(CondStoreCrispinClient):
@@ -686,6 +689,14 @@ class GmailCrispinClient(CondStoreCrispinClient):
         data = self.conn.fetch(uids, ['FLAGS X-GM-LABELS'])
         return dict([(long(uid), GmailFlags(msg['FLAGS'], msg['X-GM-LABELS']))
                      for uid, msg in data.iteritems()])
+
+    def new_and_updated_uids(self, modseq):
+        # We want to track label modifications in Gmail too.
+        resp = self.conn.fetch('1:*', ['FLAGS X-GM-LABELS'],
+                               modifiers=['CHANGEDSINCE {}'.format(modseq)])
+        # TODO(emfree): It may be useful to hold on to the whole response here,
+        # and not just the UIDs.
+        return sorted(resp.keys())
 
     def folder_names(self):
         """ Parses out Gmail-specific folder names based on Gmail IMAP flags.
