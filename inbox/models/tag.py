@@ -79,8 +79,11 @@ class Tag(MailSyncBase, HasRevisions):
 
     @classmethod
     def create_canonical_tags(cls, namespace, db_session):
-        """If they don't already exist yet, create tags that should always
-        exist."""
+        """
+        If they don't already exist yet, create tags that should always
+        exist.
+
+        """
         existing_canonical_tags = db_session.query(Tag).filter(
             Tag.namespace_id == namespace.id,
             Tag.public_id.in_(cls.CANONICAL_TAG_NAMES)).all()
