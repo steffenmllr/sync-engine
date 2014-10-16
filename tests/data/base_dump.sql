@@ -887,7 +887,6 @@ CREATE TABLE `imapuid` (
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
   `deleted_at` datetime DEFAULT NULL,
-  `labels` text NOT NULL,
   `g_labels` text NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_imapuid_folder_id_msg_uid_imapaccount_id` (`folder_id`,`msg_uid`,`account_id`),
