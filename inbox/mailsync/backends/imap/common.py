@@ -28,16 +28,28 @@ def all_uids(account_id, session, folder_name):
         Folder.name == folder_name)}
 
 
-def update_thread_labels(thread, folder_name, g_labels, db_session):
+def update_thread_labels(thread, folder_name, g_labels, db_session, is_gmail=False):
     """ Make sure `thread` has all the right labels. """
     existing_labels = {folder.name.lower() for folder in thread.folders
                        if folder.name is not None} | \
                       {folder.canonical_name for folder in thread.folders
                        if folder.canonical_name is not None}
 
-    new_labels = {l.lstrip('\\').lower() if isinstance(l, unicode)
-                  else unicode(l) for l in g_labels if l is not None}
-    new_labels.add(folder_name.lower())
+
+    labels = {l.lstrip('\\').lower() if isinstance(l, unicode)
+              else unicode(l) for l in g_labels if l is not None}
+
+    if is_gmail:
+        # FIXME @karim: This is probably killing the db.
+        for message in thread.messages:
+            for imapuid in message.imapuids:
+                for label in imapuids.labels:
+                    if isinstance(l, unicode):
+                        labels.add(l.lstrip('\\').lower())
+                    else:
+                        labels.add(unicode(l))
+
+    labels.add(folder_name.lower())
 
     # Remove labels that have been deleted -- note that the \Inbox, \Sent,
     # \Important, \Starred, and \Drafts labels are per-message, not per-thread,
@@ -49,13 +61,13 @@ def update_thread_labels(thread, folder_name, g_labels, db_session):
     for folder in thread.folders:
         if folder.canonical_name not in ('inbox', 'sent', 'drafts',
                                          'important', 'starred', 'all'):
-            if folder.lowercase_name not in new_labels:
+            if folder.lowercase_name not in labels:
                 folders_to_discard.append(folder)
     for folder in folders_to_discard:
         thread.folders.discard(folder)
 
     # add new labels
-    for label in new_labels:
+    for label in labels:
         if label.lower() not in existing_labels:
             # The problem here is that Gmail's attempt to squash labels and
             # IMAP folders into the same abstraction doesn't work perfectly. In
@@ -82,7 +94,7 @@ def update_thread_labels(thread, folder_name, g_labels, db_session):
                 folder = Folder.find_or_create(db_session,
                                                thread.namespace.account, label)
                 thread.folders.add(folder)
-    return new_labels
+    return labels
 
 
 def update_metadata(account_id, session, folder_name, folder_id, uids,
@@ -103,7 +115,7 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
                 options(joinedload(ImapUid.message)):
             flags = new_flags[item.msg_uid].flags
             thread = item.message.thread
-            if hasattr(new_flags[item.msg_uid], 'labels'):
+            if hasattr(new_flags[item.msg_uid], 'labels'):  # i.e: gmail
                 labels = new_flags[item.msg_uid].labels
                 item.g_labels = [label for label in labels]
                 update_thread_labels(thread, folder_name, labels, session)
