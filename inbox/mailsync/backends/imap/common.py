@@ -105,7 +105,7 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
             thread = item.message.thread
             if hasattr(new_flags[item.msg_uid], 'labels'):
                 labels = new_flags[item.msg_uid].labels
-                item.labels = [label for label in labels]
+                item.g_labels = [label for label in labels]
                 update_thread_labels(thread, folder_name, labels, session)
             else:
                 labels = None

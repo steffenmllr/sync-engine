@@ -269,7 +269,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
 
             # FIXME: @karim not sure if it's necessary to clean up strings like
             # \\Inbox, \\Trash, etc.
-            new_uid.labels = [label for label in msg.g_labels]
+            new_uid.g_labels = [label for label in msg.g_labels]
 
             thread = new_uid.message.thread = ImapThread.from_gmail_message(
                 db_session, new_uid.account.namespace, new_uid.message)
@@ -470,7 +470,7 @@ def add_new_imapuid(db_session, gmessage, folder_name, acc):
             folder=Folder.find_or_create(db_session, acc, folder_name),
             msg_uid=gmessage.uid, message=message)
         new_imapuid.update_imap_flags(gmessage.flags, gmessage.labels)
-        new_imapuid.labels = [label for label in gmessage.labels]
+        new_imapuid.g_labels = [label for label in gmessage.labels]
         db_session.add(new_imapuid)
         db_session.commit()
     else:
