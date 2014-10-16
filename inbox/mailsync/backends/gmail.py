@@ -276,7 +276,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
 
             # make sure this thread has all the correct labels
             common.update_thread_labels(thread, folder.name, msg.g_labels,
-                                        db_session, is_gmail=True)
+                                        db_session)
             return new_uid
 
     def download_and_commit_uids(self, crispin_client, folder_name, uids):
