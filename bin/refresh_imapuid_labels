@@ -34,32 +34,27 @@ def account_updater(account):
         # FIXME: I HAVE NO IDEA WHAT I'M DOING - how does this pool thing
         # work? Does it even block?
         pool = connection_pool(account.id)
-        greenlet = gevent.spawn(labels_updater, crispin_client, folder)
+        greenlet = gevent.spawn(labels_updater, folder, pool)
         # Block, otherwise getting an error about a socket being reused.
         greenlet.join()
 
 
-def labels_updater(crispin_client, folder, pool):
+def labels_updater(folder, pool):
     """Updates labels for a given folder"""
     UIDS_CHUNK = 1000
 
     with session_scope() as db_session:
-
-        # First, check if there's actual imapuids in this folder:
-        folder_count = db_session.query(func.count(ImapUid)).filter(
-            ImapUid.folder_id == folder.id)
-
-        if folder_count == 0:
-            return
-
         folder_uids = db_session.query(ImapUid).filter(
             ImapUid.folder_id == folder.id)
 
+        if folder_uids.count() == 0:
+            return
+
+        print "refreshing %s" % folder.name
         with pool.get() as crispin_client:
             crispin_client.select_folder(
                 folder.name,
                 uidvalidity_cb)
-
 
             for uid_chunk in chunk(folder_uids, UIDS_CHUNK):
                 uids_table = {uid.msg_uid: uid for uid in uid_chunk}
