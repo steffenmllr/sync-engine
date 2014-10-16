@@ -247,12 +247,12 @@ class BaseMailSyncMonitor(Greenlet):
                 # first
                 sync.kill(block=True)
 
-                return self.cleanup()
+                return self._cleanup()
             else:
                 sleep(self.heartbeat)
 
         if sync.successful():
-            return self.cleanup()
+            return self._cleanup()
 
         # We just want the name of the exception so don't bother with
         # sys.exc_info()
@@ -267,16 +267,21 @@ class BaseMailSyncMonitor(Greenlet):
         self.log.info('processing command', cmd=cmd)
         return cmd != 'shutdown'
 
-    def _thread_finished(self, thread):
-        state = getattr(thread, 'state')
-        return state == 'finish'
-
-    def _thread_polling(self, thread):
-        state = getattr(thread, 'state')
-        return state is not None and state.startswith('poll')
-
     def sync(self):
         raise NotImplementedError
 
-    def cleanup(self):
+    def _cleanup(self):
         self.folder_monitors.kill()
+
+
+def _check_thread_state(thread, is_state):
+    state = getattr(thread, 'state')
+    return state == is_state or (state and state.startswith(is_state))
+
+
+def thread_finished(thread):
+    return _check_thread_state(thread, 'finish')
+
+
+def thread_polling(thread):
+    return _check_thread_state(thread, 'poll')
