@@ -41,11 +41,12 @@ def update_thread_labels(thread, folder_name, g_labels, db_session):
     # FIXME @karim: We should probably do a joinedload or something here.
     for message in thread.messages:
         for imapuid in message.imapuids:
-            for label in imapuid.g_labels:
-                if isinstance(label, unicode):
-                    labels.add(label.lstrip('\\').lower())
-                else:
-                    labels.add(unicode(label))
+            if imapuid.g_labels is not None:
+                for label in imapuid.g_labels:
+                    if isinstance(label, unicode):
+                        labels.add(label.lstrip('\\').lower())
+                    else:
+                        labels.add(unicode(label))
 
     labels.add(folder_name.lower())
 
