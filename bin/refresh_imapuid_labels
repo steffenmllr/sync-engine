@@ -3,6 +3,7 @@
 
 import gevent
 from gevent import monkey; monkey.patch_all()
+from gevent.pool import Pool
 from sqlalchemy import func
 from inbox.util.itert import chunk
 from inbox.mailsync.backends.imap.generic import uidvalidity_cb
@@ -17,11 +18,11 @@ def gmail_updater():
         accounts = db_session.query(Account).filter(
             Account.discriminator =='gmailaccount')
 
-    greenlets = []
+    pool = Pool(10)
     for account in accounts:
-        greenlets.append(gevent.spawn(account_updater, account))
+        pool.spawn(account_updater, account)
 
-    gevent.joinall(greenlets)
+    pool.join()
 
 
 def account_updater(account):
@@ -65,7 +66,7 @@ def labels_updater(folder, pool):
                     if flags[uid].labels is not None and uid in uids_table:
                         uids_table[uid].g_labels = [label for label in flags[uid].labels]
 
-        db_session.commit()
+                db_session.commit()
 
 
 if __name__ == '__main__':
