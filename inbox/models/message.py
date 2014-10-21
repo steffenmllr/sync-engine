@@ -4,6 +4,7 @@ import datetime
 
 from hashlib import sha256
 from flanker import mime
+from lxml import etree
 
 from sqlalchemy import (Column, Integer, BigInteger, String, DateTime,
                         Boolean, Enum, ForeignKey, Text)
@@ -328,8 +329,13 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         # TODO: also strip signatures.
         if html_part:
             assert '\r' not in html_part, "newlines not normalized"
-            extracted = extract_from_html(
-                html_part.encode('utf-8')).decode('utf-8').strip()
+            try:
+                extracted = extract_from_html(
+                    html_part.encode('utf-8')).decode('utf-8').strip()
+            except etree.ParserError:
+                log.error('Error extracting quotes',
+                          html_part=html_part)
+                raise
             self.snippet = self.calculate_html_snippet(extracted)
             # If quote-stripping left us with a blank message, store the
             # original instead.
