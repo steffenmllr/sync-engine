@@ -3,6 +3,7 @@
 
 import gevent
 import json
+import sys
 from gevent import monkey; monkey.patch_all()
 from gevent.pool import Pool
 from sqlalchemy import func
@@ -19,31 +20,34 @@ def gmail_updater(accounts_ids = []):
         accounts = db_session.query(Account).filter(
             Account.discriminator =='gmailaccount')
 
-        if accounts_ids is not None:
-            accounts = accounts.filter(Account.id.in_(accounts_ids))
+    if accounts_ids != []:
+        accounts = accounts.filter(Account.id.in_(accounts_ids))
 
     pool = Pool(10)
-    failed_accounts_queue = gevent.queue.Queue()
+    failed_accounts = []
     for account in accounts:
         print "Spawning for account: %d" % account.id
-        pool.spawn(account_updater, account, failed_accounts_queue)
+        pool.spawn(account_updater, account, failed_accounts)
 
     pool.join()
-    print failed_accounts_queue
+    print "Failed accounts: %s" % failed_accounts
 
-
-def account_updater(account, failed_accounts_queue):
+def account_updater(account, failed_accounts):
     """Updates all the folders in a given account"""
     with session_scope() as db_session:
         folders = db_session.query(Folder).filter(
             Folder.account_id == account.id)
 
+    def handler():
+    	failed_accounts.append(account.id)
+	raise gevent.GreenletExit
+    
     for folder in folders:
         # FIXME: I HAVE NO IDEA WHAT I'M DOING - how does this pool thing
         # work? Does it even block?
         pool = connection_pool(account.id)
         greenlet = gevent.spawn(labels_updater, folder, pool)
-        greenlet.link_exception(lambda *args: failed_accounts_queue.put(account.id) and raise gevent.GreenletExit)
+        greenlet.link_exception(handler)
         # Block, otherwise getting an error about a socket being reused.
         greenlet.join()
 
@@ -54,7 +58,8 @@ def labels_updater(folder, pool):
 
     with session_scope() as db_session:
         folder_uids = db_session.query(ImapUid).filter(
-            ImapUid.folder_id == folder.id)
+            ImapUid.folder_id == folder.id,
+            ImapUid.g_labels == '')
 
         if folder_uids.count() == 0:
             return
@@ -83,7 +88,7 @@ def labels_updater(folder, pool):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 0:
+    if len(sys.argv) > 1:
         gmail_updater(accounts=json.loads(sys.argv[1]))
     else:
         gmail_updater()
