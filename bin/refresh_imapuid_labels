@@ -2,6 +2,7 @@
 # fill-out the "labels" field for all the imapuids in the db.
 
 import gevent
+import json
 from gevent import monkey; monkey.patch_all()
 from gevent.pool import Pool
 from sqlalchemy import func
@@ -13,10 +14,13 @@ from inbox.models import Account, Folder
 from inbox.models.backends.imap import ImapUid
 
 
-def gmail_updater():
+def gmail_updater(accounts_ids = []):
     with session_scope() as db_session:
         accounts = db_session.query(Account).filter(
             Account.discriminator =='gmailaccount')
+
+        if accounts_ids is not None:
+            accounts = accounts.filter(Account.id.in_(accounts_ids))
 
     pool = Pool(10)
     failed_accounts_queue = gevent.queue.Queue()
@@ -79,4 +83,7 @@ def labels_updater(folder, pool):
 
 
 if __name__ == '__main__':
-    gmail_updater()
+    if len(sys.argv) != 0:
+        gmail_updater(accounts=json.loads(sys.argv[1]))
+    else:
+        gmail_updater()
