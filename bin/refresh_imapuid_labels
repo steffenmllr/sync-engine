@@ -19,19 +19,16 @@ def gmail_updater():
             Account.discriminator =='gmailaccount')
 
     pool = Pool(10)
-    failed_accounts_ids = []
+    failed_accounts_queue = gevent.queue.Queue()
     for account in accounts:
         print "Spawning for account: %d" % account.id
-        try:
-            pool.spawn(account_updater, account)
-        except Exception:
-            failed_accounts_ids.append(account.id)
+        pool.spawn(account_updater, account, failed_accounts_queue)
 
     pool.join()
-    print failed_accounts_ids
+    print failed_accounts_queue
 
 
-def account_updater(account):
+def account_updater(account, failed_accounts_queue):
     """Updates all the folders in a given account"""
     with session_scope() as db_session:
         folders = db_session.query(Folder).filter(
@@ -42,6 +39,7 @@ def account_updater(account):
         # work? Does it even block?
         pool = connection_pool(account.id)
         greenlet = gevent.spawn(labels_updater, folder, pool)
+        greenlet.link_exception(lambda *args: failed_accounts_queue.put(account.id) and raise gevent.GreenletExit)
         # Block, otherwise getting an error about a socket being reused.
         greenlet.join()
 
