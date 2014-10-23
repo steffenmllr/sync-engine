@@ -19,10 +19,16 @@ def gmail_updater():
             Account.discriminator =='gmailaccount')
 
     pool = Pool(10)
+    failed_accounts_ids = []
     for account in accounts:
-        pool.spawn(account_updater, account)
+        print "Spawning for account: %d" % account.id
+        try:
+            pool.spawn(account_updater, account)
+        except Exception:
+            failed_accounts_ids.append(account.id)
 
     pool.join()
+    print failed_accounts_ids
 
 
 def account_updater(account):
@@ -57,16 +63,21 @@ def labels_updater(folder, pool):
                 folder.name,
                 uidvalidity_cb)
 
-            for uid_chunk in chunk(folder_uids, UIDS_CHUNK):
-                uids_table = {uid.msg_uid: uid for uid in uid_chunk}
+            uids_table = {}
+            uids = []
+            for uid in folder_uids.yield_per(UIDS_CHUNK):
+                uids_table[uid.msg_uid] = uid
+                uids.append(uid.msg_uid)
 
-                uids = [uid.msg_uid for uid in uid_chunk]
+            if len(uids) == UIDS_CHUNK:
                 flags = crispin_client.flags(uids)
                 for uid in flags:
                     if flags[uid].labels is not None and uid in uids_table:
                         uids_table[uid].g_labels = [label for label in flags[uid].labels]
 
                 db_session.commit()
+                uids_table = {}
+                uids = []
 
 
 if __name__ == '__main__':
