@@ -58,8 +58,7 @@ def labels_updater(folder, pool):
 
     with session_scope() as db_session:
         folder_uids = db_session.query(ImapUid).filter(
-            ImapUid.folder_id == folder.id,
-            ImapUid.g_labels == '')
+            ImapUid.folder_id == folder.id)
 
         if folder_uids.count() == 0:
             return
