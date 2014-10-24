@@ -82,7 +82,7 @@ def labels_updater(folder, pool):
                     if flags[uid].labels is not None and uid in uids_table:
                         uids_table[uid].g_labels = [label for label in flags[uid].labels]
 
-                db_session.commit()
+                db_session.flush()
                 uids_table = {}
                 uids = []
 
