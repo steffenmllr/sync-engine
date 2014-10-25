@@ -788,6 +788,10 @@ DROP TABLE IF EXISTS `imapaccount`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `imapaccount` (
   `id` int(11) NOT NULL,
+  `_imap_server_host` varchar(255) DEFAULT NULL,
+  `_imap_server_port` int(11) NOT NULL DEFAULT '993',
+  `_smtp_server_host` varchar(255) DEFAULT NULL,
+  `_smtp_server_port` int(11) NOT NULL DEFAULT '587',
   PRIMARY KEY (`id`),
   CONSTRAINT `imapaccount_ibfk_1` FOREIGN KEY (`id`) REFERENCES `account` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -799,7 +803,7 @@ CREATE TABLE `imapaccount` (
 
 LOCK TABLES `imapaccount` WRITE;
 /*!40000 ALTER TABLE `imapaccount` DISABLE KEYS */;
-INSERT INTO `imapaccount` VALUES (1);
+INSERT INTO `imapaccount` VALUES (1,NULL,993,NULL,587);
 /*!40000 ALTER TABLE `imapaccount` ENABLE KEYS */;
 UNLOCK TABLES;
 
