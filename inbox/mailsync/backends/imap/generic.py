@@ -371,7 +371,7 @@ class FolderSyncEngine(Greenlet):
                 for index, message in enumerate(constructed_thread):
                     message.thread_order = index
 
-            db_session.commit()
+            db_session.flush()
             # Make sure this thread has all the correct labels
             common.update_thread_labels(new_uid.message.thread, folder.name,
                                         [folder.canonical_name], db_session)
