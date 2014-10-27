@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# fill-out the "labels" field for all the imapuids in the db.
+# fill-out the "labels" field for all the imapuids in the db for an account.
 
 import gevent
 import json
@@ -32,62 +32,75 @@ def gmail_updater(accounts_ids = []):
     pool.join()
     print "Failed accounts: %s" % failed_accounts
 
-def account_updater(account, failed_accounts):
+def account_updater(account_id):
     """Updates all the folders in a given account"""
     with session_scope() as db_session:
+        # Check that this is a gmail account
+        account = db_session.query(Account).filter(
+                Account.discriminator =='gmailaccount').get(account_id)
+
+        if account == None:
+            print "Invalid account"
+            sys.exit(-1)
+
         folders = db_session.query(Folder).filter(
             Folder.account_id == account.id)
 
-    def handler():
-    	failed_accounts.append(account.id)
-	raise gevent.GreenletExit
-    
-    for folder in folders:
-        # FIXME: I HAVE NO IDEA WHAT I'M DOING - how does this pool thing
-        # work? Does it even block?
-        pool = connection_pool(account.id)
-        greenlet = gevent.spawn(labels_updater, folder, pool)
-        greenlet.link_exception(handler)
-        # Block, otherwise getting an error about a socket being reused.
-        greenlet.join()
+        for folder in folders:
+            # FIXME: I HAVE NO IDEA WHAT I'M DOING - how does this pool thing
+            # work? Does it even block?
+            pool = connection_pool(account.id)
+            greenlet = gevent.spawn(labels_updater, folder, pool)
+            # Block, otherwise getting an error about a socket being reused.
+            greenlet.join()
 
 
 def labels_updater(folder, pool):
     """Updates labels for a given folder"""
     UIDS_CHUNK = 1000
 
-    with session_scope() as db_session:
-        folder_uids = db_session.query(ImapUid).filter(
-            ImapUid.folder_id == folder.id)
+    try:
+        with session_scope() as db_session:
+            folder_uids = db_session.query(ImapUid).filter(
+                ImapUid.folder_id == folder.id, ImapUid.g_labels == [])
 
-        if folder_uids.count() == 0:
-            return
+            if folder_uids.count() == 0:
+                return
 
-        print "refreshing %s" % folder.name
-        with pool.get() as crispin_client:
-            crispin_client.select_folder(
-                folder.name,
-                uidvalidity_cb)
+            print "refreshing %s" % folder.name
+            with pool.get() as crispin_client:
+                crispin_client.select_folder(
+                    folder.name,
+                    uidvalidity_cb)
 
-            uids_table = {}
-            uids = []
-            for uid in folder_uids.yield_per(UIDS_CHUNK):
-                uids_table[uid.msg_uid] = uid
-                uids.append(uid.msg_uid)
+                uids_table = {}
+                uids = []
+                for uid in folder_uids.yield_per(UIDS_CHUNK):
+                    uids_table[uid.msg_uid] = uid
+                    uids.append(uid.msg_uid)
 
-            if len(uids) == UIDS_CHUNK:
                 flags = crispin_client.flags(uids)
                 for uid in flags:
                     if flags[uid].labels is not None and uid in uids_table:
                         uids_table[uid].g_labels = [label for label in flags[uid].labels]
 
-                db_session.flush()
+                db_session.commit()
                 uids_table = {}
                 uids = []
+                raise gevent.GreenletExit
+
+    except gevent.GreenletExit:
+        pass
+    except Exception as e:
+        print "Exception:\n"
+        print str(e)
+        sys.exit(-1)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        gmail_updater(accounts=json.loads(sys.argv[1]))
-    else:
-        gmail_updater()
+    if len(sys.argv) != 2:
+        print "usage: %s account_id" % sys.argv[0]
+        sys.exit(-1)
+
+    account_id = int(sys.argv[1])
+    account_updater(account_id)
