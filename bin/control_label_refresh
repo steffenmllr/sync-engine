@@ -28,9 +28,15 @@ if __name__ == '__main__':
         if account_ids is not None:
            accounts = accounts.filter(Account.id.in_(accounts_ids))
 
-        for account in accounts:
-            ret = os.system("bin/refresh_imapuid_labels %d" % account.id)
-            if os.WEXITSTATUS(ret) != 0:
-                failed_accounts.append(account.id)
+        accounts_list = [account for account in accounts]
+        # Expunge these objects from the session since we don't
+        # want to keep a mysql connection open for 10+ hours.
+        for account in accounts_list:
+            db_session.expunge(account)
+
+    for account in accounts_list:
+        ret = os.system("bin/refresh_imapuid_labels %d" % account.id)
+        if os.WEXITSTATUS(ret) != 0:
+            failed_accounts.append(account.id)
 
     print "Failed accounts: %s" % failed_accounts
