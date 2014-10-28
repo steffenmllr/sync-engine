@@ -26,7 +26,7 @@ if __name__ == '__main__':
         accounts = db_session.query(Account).filter(
             Account.discriminator =='gmailaccount')
         if account_ids is not None:
-           accounts = accounts.filter(Account.id.in_(accounts_ids))
+           accounts = accounts.filter(Account.id.in_(account_ids))
 
         accounts_list = [account for account in accounts]
         # Expunge these objects from the session since we don't
