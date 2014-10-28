@@ -107,7 +107,7 @@ class ImapUid(MailSyncBase):
     # things like: ['$Forwarded', 'nonjunk', 'Junk']
     extra_flags = Column(LittleJSON, default=[], nullable=False)
     # labels (Gmail-specific)
-    g_labels = Column(JSON, default=lambda: [], nullable=False)
+    g_labels = Column(JSON, default=lambda: [], nullable=True)
 
     def update_imap_flags(self, new_flags, x_gm_labels=None):
         new_flags = set(new_flags)

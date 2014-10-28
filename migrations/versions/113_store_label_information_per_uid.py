@@ -19,7 +19,7 @@ from inbox.sqlalchemy_ext.util import JSON
 
 def upgrade():
     op.add_column('imapuid', sa.Column('g_labels', JSON(),
-                                       nullable=False))
+                                       nullable=True))
 
     conn = op.get_bind()
     conn.execute(text("UPDATE imapuid SET g_labels = '[]'"))
