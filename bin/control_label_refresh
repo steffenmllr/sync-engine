@@ -39,7 +39,7 @@ if __name__ == '__main__':
             db_session.expunge(account)
 
         if dry_run:
-            print accounts_list
+            print [account.id for account in accounts_list]
             sys.exit(0)
 
     for account in accounts_list:
