@@ -17,8 +17,12 @@ from inbox.models.backends.imap import ImapUid
 if __name__ == '__main__':
 
     account_ids = None
+    dry_run = False
     if len(sys.argv) != 1:
-        account_ids = [int(num) for num in sys.argv[1:]]
+        if sys.argv[1] == '-p':
+            dry_run = True
+        else:
+            account_ids = [int(num) for num in sys.argv[1:]]
 
     failed_accounts = []
 
@@ -33,6 +37,10 @@ if __name__ == '__main__':
         # want to keep a mysql connection open for 10+ hours.
         for account in accounts_list:
             db_session.expunge(account)
+
+        if dry_run:
+            print accounts_list
+            sys.exit(0)
 
     for account in accounts_list:
         ret = os.system("bin/refresh_imapuid_labels %d" % account.id)
