@@ -214,6 +214,7 @@ class BaseSMTPClient(object):
     @smtpconn_retry
     def _send(self, recipients, msg):
         """ Send the email message over the network. """
+        failures = None
         try:
             with self._get_connection() as smtpconn:
                 failures = smtpconn.sendmail(self.email_address, recipients,
