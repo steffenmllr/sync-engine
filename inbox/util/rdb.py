@@ -2,6 +2,7 @@ import socket
 from gevent import monkey; monkey.patch_all()
 import sys
 import random
+from gevent import monkey; monkey.patch_all(aggressive=False)
 from code import InteractiveConsole
 
 
