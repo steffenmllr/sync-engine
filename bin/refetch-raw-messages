@@ -1,0 +1,103 @@
+#!/usr/bin/env python
+from gevent import monkey
+monkey.patch_all()
+import gevent
+import sys
+import time
+import click
+from sqlalchemy import asc
+from sqlalchemy.orm import joinedload
+from inbox.crispin import connection_pool, retry_crispin
+from inbox.log import get_logger, configure_logging
+from inbox.mailsync.backends.imap.generic import uidvalidity_cb
+from inbox.models import Namespace, Message, Block
+from inbox.models.backends.imap import ImapAccount, ImapUid
+from inbox.models.session import session_scope
+configure_logging(is_prod=True)
+
+
+@retry_crispin
+def imap_refetch_messages_for_namespace(namespace_id):
+    log = get_logger().new()
+    log.bind(namespace_id=namespace_id)
+    start_time = time.time()
+    # Don't need to version.
+    with session_scope(versioned=False) as db_session:
+        namespace = db_session.query(Namespace).get(namespace_id)
+        if not isinstance(namespace.account, ImapAccount):
+            return
+        # Skip stopped/invalid accounts.
+        if namespace.account.sync_state != 'running':
+            return
+
+        conn_pool = connection_pool(account_id=namespace.account_id,
+                                    pool_size=1)
+
+        # Query for all ImapUids for which the associated Message doesn't have
+        # a full body. Order results by folder_id so that we can easily
+        # re-download them folder-by-folder.
+        imapuids_to_refetch = db_session.query(ImapUid).join(Message). \
+            filter(ImapUid.account_id == namespace.account_id,
+                   Message.namespace_id == namespace_id,
+                   Message.full_body_id.is_(None)). \
+            order_by(asc(ImapUid.folder_id)). \
+            options(joinedload(ImapUid.folder)).all()
+
+        fetched_message_ids = set()
+        with conn_pool.get() as conn:
+            for index, imapuid in enumerate(imapuids_to_refetch):
+                if imapuid.message_id in fetched_message_ids:
+                    continue
+
+                if conn.selected_folder_name != imapuid.folder.name:
+                    log.info('Refetching messages', folder=imapuid.folder.name)
+                    conn.select_folder(imapuid.folder.name, uidvalidity_cb)
+                raw_messages = conn.uids([imapuid.msg_uid])
+                if not raw_messages:
+                    continue
+                raw_message = raw_messages[0].body
+                body = Block(namespace_id=namespace_id)
+                body.data = raw_message
+                imapuid.message.full_body = body
+                fetched_message_ids.add(imapuid.message_id)
+                log.info('Refetched body', message_id=imapuid.message_id)
+
+                # Commit every 100 messages
+                if index % 100 == 0:
+                    db_session.commit()
+
+        db_session.commit()
+    num_refetched_messages = len(fetched_message_ids)
+    end_time = time.time()
+    print "refetched {} messages in {} seconds".format(num_refetched_messages,
+                                                       end_time - start_time)
+
+
+@click.command()
+@click.option('--namespace_ids')
+@click.option('--process_id')
+@click.option('--total_processes')
+@click.option('--pool_size', default=25)
+def main(namespace_ids, pool_size, process_id, total_processes):
+    if namespace_ids:
+        namespace_ids = [int(item) for item in namespace_ids.split(',')]
+    else:
+        with session_scope() as db_session:
+            namespace_ids = [ns.id for ns in db_session.query(Namespace) if
+                             isinstance(ns.account, ImapAccount)]
+        if process_id is not None:
+            process_id = int(process_id)
+            total_processes = int(total_processes)
+            namespace_ids = [ns_id for ns_id in namespace_ids
+                             if ns_id % total_processes == process_id]
+    pool = gevent.pool.Pool(size=pool_size)
+    for namespace_id in namespace_ids:
+        print "Refetching messages for namespace {}".format(namespace_id)
+        pool.add(gevent.spawn(
+            imap_refetch_messages_for_namespace, namespace_id))
+
+    pool.join()
+
+
+if __name__ == '__main__':
+    main()

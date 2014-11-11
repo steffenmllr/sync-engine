@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+import subprocess
+
+
+processes = []
+
+for i in range(16):
+    p = subprocess.Popen(
+        'bin/refetch-raw-messages --process_id={0} --total_processes=16 | '
+        'tee ~/refetch_log_{0}.log'.format(i), shell=True)
+    processes.append(p)
+
+for p in processes:
+    p.wait()
