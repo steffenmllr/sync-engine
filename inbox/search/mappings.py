@@ -41,8 +41,30 @@ MESSAGE_MAPPING = {
     }
 }
 
+#Mapping for attachments. Parent is message. 
+
+ATTACHMENT_MAPPING = {
+    '_parent': {
+        'type': 'message'
+    },
+    'properties': {
+        'id': {'type': 'string'},
+        'object': {'type': 'attachment'},
+        'namespace_id': {'type': 'string'},
+        'content_type': {'type': 'string'},
+        'size': {'type': 'long'},
+        'filename': {'type': 'string'},
+        'is_embedded': {'type': 'boolean'}
+
+    }
+}
+
+
+
 # TODO[k]: message._parent = thread
 NAMESPACE_INDEX_MAPPING = {
     'thread': THREAD_MAPPING,
-    'message': MESSAGE_MAPPING
+    'message': MESSAGE_MAPPING,
+    'attachment': ATTACHMENT_MAPPING
 }
+

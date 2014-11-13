@@ -177,6 +177,44 @@ class MessageQuery(Query):
         query_dict.update(dict(type='thread'))
         return {'query': dict(has_parent=query_dict)}
 
+class PartQuery(Query):
+    def __init__(self, query, query_type='and'):
+        # TODO[k]: files have content_type, size, filename, id.
+        # We exclude the namespace_id.
+        attrs = ['id', 'content_type', 'size', 'filename', 'message_id']
+        self._fields = dict((k, None) for k in attrs)
+
+        Query.__init__(self, query, query_type)
+
+        self.apply_weights()
+        
+
+    #we can do this later
+    #def apply_weights(self):
+    #    if not self.query or not 'all' in self.query:
+    #        return
+
+        # Arbitrarily assigned boost_score
+        #if 'weights' not in self.query:
+        #    for f in ['subject', 'snippet', 'body']:
+        #        self._fields[f] = 3
+        #else:
+        #    self._fields.update(self.query['weights'])
+        #    del self.query['weights']
+
+    def generate(self):
+        query_dict = self.convert()
+
+        # TODO[k]:
+        # Fix for case self.query is a list i.e. OR-query
+        # Fix to support cross Thread/Message field queries
+        if self.query.keys()[0] in self._fields or \
+                self.query.keys()[0] == 'all':
+            return query_dict
+
+        query_dict.update(dict(type='message'))
+        return {'query': dict(has_parent=query_dict)}
+
 
 class ThreadQuery(Query):
     def __init__(self, query, query_type='and'):

@@ -1,18 +1,26 @@
 import dateutil.parser
-
 import gevent
 from sqlalchemy.orm import joinedload, subqueryload
 
 from inbox.log import get_logger
 log = get_logger()
 from inbox.models.session import session_scope
-from inbox.models import Namespace, Thread, Message
+from inbox.models import Namespace, Thread, Message, Part
 from inbox.api.kellogs import encode
 from inbox.search.adaptor import NamespaceSearchEngine
 from inbox.search.util.misc import es_format_address_list, es_format_tags_list
 from inbox.sqlalchemy_ext.util import safer_yield_per
 
 CHUNK_SIZE = 1000
+
+def force_int(n):
+    try:
+        int(n)
+        return n
+    except ValueError:
+        return 0
+    except TypeError:
+        return 0
 
 
 class NamespaceIndexer(object):
@@ -28,19 +36,27 @@ class NamespaceIndexer(object):
         """
         with session_scope() as db_session:
             q = db_session.query(Namespace.id, Namespace.public_id)
-
+            
             if namespace_public_id is not None:
-                namespaces = q.filter(
-                    Namespace.public_id == namespace_public_id).one()
+                namespaces = [q.filter(
+                    Namespace.public_id == namespace_public_id).one()]
             else:
                 namespaces = q.all()
 
         for ns in namespaces:
             self.pool.append(gevent.spawn(index_threads, ns, updated_since))
-            self.pool.append(gevent.spawn(index_messages, ns, updated_since))
+            #index messages returns attachments if "include_attachments" is set to true
+            self.pool.append(gevent.spawn(index_messages, ns, updated_since, True))
+            
+
+            #if efficiency comes up with regards to this script, it might be worth 
+            #looking at utilizing the parent child relationships of these objects to 
+            #cut down on lookups
+
 
         gevent.joinall(self.pool)
-        return sum([g.value for g in self.pool])
+        
+        return sum([force_int(g.value) for g in self.pool])
 
     def delete(self, namespace_public_id=None):
         """
@@ -53,8 +69,8 @@ class NamespaceIndexer(object):
             q = db_session.query(Namespace.id, Namespace.public_id)
 
             if namespace_public_id is not None:
-                namespaces = q.filter(
-                    Namespace.public_id == namespace_public_id).one()
+                namespaces = [q.filter(
+                    Namespace.public_id == namespace_public_id).one()]
             else:
                 namespaces = q.all()
 
@@ -115,7 +131,7 @@ def index_threads(namespace, updated_since=None):
     return indexed_count
 
 
-def index_messages(namespace, updated_since=None):
+def index_messages(namespace, updated_since=None, include_attachments = True):
     """ Index the messages of a namespace. """
     namespace_id, namespace_public_id = namespace
 
@@ -126,16 +142,19 @@ def index_messages(namespace, updated_since=None):
     search_engine = NamespaceSearchEngine(namespace_public_id)
 
     with session_scope() as db_session:
+        #Generate query for message
         query = db_session.query(Message).filter(
             Message.namespace_id == namespace.id)
 
         if updated_since is not None:
             query = query.filter(Message.updated_at > updated_since)
 
-        query = query.options(joinedload(Message.parts).
-                              load_only('content_disposition'))
+        #query = query.options(joinedload(Message.parts))
+
+        #print("query is: ================" + str(query))
 
         encoded = []
+        #Add messages to index serialize
         for obj in safer_yield_per(query, Message.id, 0, CHUNK_SIZE):
             encoded_obj = encode(
                 obj, namespace_public_id=namespace_public_id,
@@ -143,13 +162,56 @@ def index_messages(namespace, updated_since=None):
                 format_tags_fn=es_format_tags_list)
 
             encoded.append(encoded_obj)
-
+            
+        
+          
     indexed_count += search_engine.messages.bulk_index(encoded)
-
+  
+    if (include_attachments):
+        indexed_count += index_attachments(Message, namespace_public_id, updated_since)
+    
     log.info('Indexed messages', namespace_id=namespace_id,
              namespace_public_id=namespace_public_id,
              message_count=indexed_count)
+    
+  
+        
+    
+    
+    return indexed_count
 
+def index_attachments(message, namespace_public_id, updated_since=None):
+    
+
+    print(message.id)
+
+    if updated_since is not None:
+        updated_since = dateutil.parser.parse(updated_since)
+
+    indexed_count = 0
+    search_engine = NamespaceSearchEngine(namespace_public_id)
+
+    with session_scope() as db_session:
+        query = db_session.query(Part).filter(
+            Part.message_id == message.id)
+
+    #if updated_since is not None:
+    #    query = query.filter(Part.updated_at > updated_since)
+
+    encoded = []
+    
+    
+    for block_obj in safer_yield_per(query, message.id , 0, CHUNK_SIZE):
+        print (str(block_obj))
+        encoded_obj = encode(
+            block_obj, namespace_public_id=namespace_public_id,
+            format_address_fn=es_format_address_list,
+            format_tags_fn=es_format_tags_list)
+        
+        encoded.append(encoded_obj)
+
+    indexed_count += search_engine.messages.bulk_index(encoded)
+    
     return indexed_count
 
 

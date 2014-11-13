@@ -7,7 +7,7 @@ from elasticsearch.helpers import bulk
 from inbox.config import config
 from inbox.log import get_logger
 log = get_logger()
-from inbox.search.query import DSLQueryEngine, MessageQuery, ThreadQuery
+from inbox.search.query import DSLQueryEngine, MessageQuery, ThreadQuery, PartQuery
 from inbox.search.mappings import NAMESPACE_INDEX_MAPPING
 
 
@@ -194,6 +194,18 @@ class BaseSearchAdaptor(object):
             del hit['_source']
         log.debug('search query results', query=query, results=log_results)
 
+
+class PartSearchAdaptor(BaseSearchAdaptor):
+    def __init__(self, index_id):
+        BaseSearchAdaptor.__init__(self, index_id=index_id, doc_type='part',
+                                   query_class=PartQuery)
+
+    def index(self, object_repr):
+        """(Re)index a message with API representation `object_repr`."""
+        self._index_document(object_repr, parent=object_repr['thread_id'])
+
+    def bulk_index(self, objects):
+        return self._bulk_index(objects, parent='thread_id')
 
 class MessageSearchAdaptor(BaseSearchAdaptor):
     def __init__(self, index_id):
