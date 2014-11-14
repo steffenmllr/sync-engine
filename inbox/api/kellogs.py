@@ -6,7 +6,7 @@ from flask import Response
 
 from inbox.models import (Message, Contact, Calendar, Event,
                           Participant, Time, TimeSpan, Date, DateSpan,
-                          Thread, Namespace, Block, Tag)
+                          Thread, Namespace, Block, Tag, Part)
 
 
 def format_address_list(addresses):
@@ -110,6 +110,17 @@ def encode(obj, namespace_public_id=None,
             'tags': format_tags_fn(obj.tags)
         }
 
+    elif isinstance(obj, Part):
+        return {
+            'id': obj.id,
+            'object': 'file',
+            'content_disposition': obj.content_disposition,
+            'filename': obj.content_id,
+            'is_embedded': True,
+            'message_id': obj.message_id,
+            'block_id': obj.block_id
+        }
+
     elif isinstance(obj, Contact):
         return {
             'id': obj.public_id,
@@ -181,7 +192,7 @@ def encode(obj, namespace_public_id=None,
     elif isinstance(obj, Block):  # ie: Attachments/Files
         resp = {
             'id': obj.public_id,
-            'object': 'file',
+            'object': obj.data,
             'namespace_id': _get_namespace_public_id(obj),
             'content_type': obj.content_type,
             'size': obj.size,

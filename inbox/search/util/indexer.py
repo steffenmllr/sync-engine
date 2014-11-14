@@ -5,7 +5,7 @@ from sqlalchemy.orm import joinedload, subqueryload
 from inbox.log import get_logger
 log = get_logger()
 from inbox.models.session import session_scope
-from inbox.models import Namespace, Thread, Message, Part
+from inbox.models import Namespace, Thread, Message, Part, Block
 from inbox.api.kellogs import encode
 from inbox.search.adaptor import NamespaceSearchEngine
 from inbox.search.util.misc import es_format_address_list, es_format_tags_list
@@ -154,21 +154,22 @@ def index_messages(namespace, updated_since=None, include_attachments = True):
         #print("query is: ================" + str(query))
 
         encoded = []
+        msg_list = []
         #Add messages to index serialize
         for obj in safer_yield_per(query, Message.id, 0, CHUNK_SIZE):
             encoded_obj = encode(
                 obj, namespace_public_id=namespace_public_id,
                 format_address_fn=es_format_address_list,
                 format_tags_fn=es_format_tags_list)
-
             encoded.append(encoded_obj)
-            
-        
+            msg_list.append(obj.id)
+            if (include_attachments):
+                indexed_count += index_attachments(
+                    Message, obj.id, namespace_public_id, updated_since)             
           
     indexed_count += search_engine.messages.bulk_index(encoded)
   
-    if (include_attachments):
-        indexed_count += index_attachments(Message, namespace_public_id, updated_since)
+    
     
     log.info('Indexed messages', namespace_id=namespace_id,
              namespace_public_id=namespace_public_id,
@@ -180,37 +181,49 @@ def index_messages(namespace, updated_since=None, include_attachments = True):
     
     return indexed_count
 
-def index_attachments(message, namespace_public_id, updated_since=None):
+def index_attachments(message, msg_id, namespace_public_id, updated_since=None):
     
-
-    print(message.id)
-
+    message_id = msg_id
+    print("attachments on message with id " + str(message_id))
+    
     if updated_since is not None:
         updated_since = dateutil.parser.parse(updated_since)
-
+        
+    encoded = []
     indexed_count = 0
     search_engine = NamespaceSearchEngine(namespace_public_id)
 
     with session_scope() as db_session:
-        query = db_session.query(Part).filter(
-            Part.message_id == message.id)
-
+        query = db_session.query(Message).get(msg_id)
+        for att in query.attachments:
+            encoded_obj = encode(
+                att, namespace_public_id=namespace_public_id,
+                format_address_fn=es_format_address_list,
+                format_tags_fn=es_format_tags_list)
+            if encoded_obj is not None:
+                encoded.append(encoded_obj)
+                print("indexed an attachment -------------------- supposedly" + str(encoded_obj))
     #if updated_since is not None:
     #    query = query.filter(Part.updated_at > updated_since)
 
-    encoded = []
+ 
     
     
-    for block_obj in safer_yield_per(query, message.id , 0, CHUNK_SIZE):
-        print (str(block_obj))
-        encoded_obj = encode(
-            block_obj, namespace_public_id=namespace_public_id,
-            format_address_fn=es_format_address_list,
-            format_tags_fn=es_format_tags_list)
-        
-        encoded.append(encoded_obj)
+    #for block_obj in safer_yield_per(query, Part.id , 0, CHUNK_SIZE):
+    #for block_obj in query:
+    #    print (str(block_obj))
+    #    print (block_obj.id)
+    #    encoded_obj = encode(
+    #        block_obj, namespace_public_id=namespace_public_id,
+    #        format_address_fn=es_format_address_list,
+    #        format_tags_fn=es_format_tags_list)
+    #    print(str(encoded_obj))
+    #    print(encoded_obj)
+    #    if encoded_obj is not None:
+    #        encoded.append(encoded_obj)
+    #        print("----------------------yay------------------------")
 
-    indexed_count += search_engine.messages.bulk_index(encoded)
+    indexed_count += search_engine.parts.bulk_index(encoded)
     
     return indexed_count
 

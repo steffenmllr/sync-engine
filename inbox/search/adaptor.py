@@ -56,7 +56,8 @@ class NamespaceSearchEngine(object):
 
         self._connection = new_connection()
         self.create_index()
-
+        
+        self.parts = PartSearchAdaptor(index_id=namespace_public_id)
         self.messages = MessageSearchAdaptor(index_id=namespace_public_id)
         self.threads = ThreadSearchAdaptor(index_id=namespace_public_id)
 
@@ -197,15 +198,15 @@ class BaseSearchAdaptor(object):
 
 class PartSearchAdaptor(BaseSearchAdaptor):
     def __init__(self, index_id):
-        BaseSearchAdaptor.__init__(self, index_id=index_id, doc_type='part',
+        BaseSearchAdaptor.__init__(self, index_id=index_id, doc_type='block',
                                    query_class=PartQuery)
 
     def index(self, object_repr):
-        """(Re)index a message with API representation `object_repr`."""
-        self._index_document(object_repr, parent=object_repr['thread_id'])
+        """(Re)index a part with API representation `object_repr`."""
+        self._index_document(object_repr, parent=object_repr['message_id'])
 
     def bulk_index(self, objects):
-        return self._bulk_index(objects, parent='thread_id')
+        return self._bulk_index(objects)#, parent='message_id')
 
 class MessageSearchAdaptor(BaseSearchAdaptor):
     def __init__(self, index_id):
