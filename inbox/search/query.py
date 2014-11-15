@@ -181,6 +181,7 @@ class BlockQuery(Query):
     def __init__(self, query, query_type='and'):
         # TODO[k]: files have content_type, size, filename, id.
         # We exclude the namespace_id.
+        print(query)
         attrs = ['id', 'object', 'namespace_id', 'content_type',
                  'size', 'filename', 'is_embedded']
         self._fields = dict((k, None) for k in attrs)
