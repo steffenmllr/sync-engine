@@ -465,6 +465,25 @@ def message_search_api():
 
     return g.encoder.jsonify(results)
 
+@app.route('/attachments/search', methods=['POST'])
+def attachment_search_api():
+    args = strict_parse_args(g.parser, request.args)
+    data = request.get_json(force=True)
+    query = data.get('query')
+
+    validate_search_query(query)
+
+    try:
+        search_engine = NamespaceSearchEngine(g.namespace_public_id)
+        results = search_engine.blocks.search(query=query,
+                                                max_results=args.limit,
+                                                offset=args.offset)
+    except SearchEngineError as e:
+        g.log.error('Search error: {0}'.format(e))
+        return err(501, 'Search error')
+
+    return g.encoder.jsonify(results)
+
 
 @app.route('/messages/<public_id>', methods=['GET', 'PUT'])
 def message_api(public_id):

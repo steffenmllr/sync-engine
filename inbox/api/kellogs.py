@@ -1,5 +1,6 @@
 import datetime
 import calendar
+import base64
 from json import JSONEncoder, dumps
 
 from flask import Response
@@ -110,7 +111,10 @@ def encode(obj, namespace_public_id=None,
             'tags': format_tags_fn(obj.tags)
         }
 
-    elif isinstance(obj, Part):
+    elif isinstance(obj, Part): 
+        #maybe remove this... I added it 
+        #because I thought I needed parts in elasticsearch [mm]
+        log.debug("made a part")
         return {
             'id': obj.id,
             'object': 'file',
@@ -190,15 +194,18 @@ def encode(obj, namespace_public_id=None,
         }
 
     elif isinstance(obj, Block):  # ie: Attachments/Files
+        #print(str(obj.data))
+        
         resp = {
             'id': obj.public_id,
-            'object': obj.data,
+            'object': base64.b64encode(obj.data),  
             'namespace_id': _get_namespace_public_id(obj),
             'content_type': obj.content_type,
             'size': obj.size,
             'filename': obj.filename,
             'is_embedded': False,
         }
+        
         if len(obj.parts):
             # if obj is actually a message attachment (and not merely an
             # uploaded file), set additional properties

@@ -54,8 +54,8 @@ ATTACHMENT_MAPPING = {
         'content_type': {'type': 'string'},
         'size': {'type': 'long'},
         'filename': {'type': 'string'},
-        'is_embedded': {'type': 'boolean'}
-
+        'is_embedded': {'type': 'boolean'},
+        'message_ids': {'type': 'string'}
     }
 }
 

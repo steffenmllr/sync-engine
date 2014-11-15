@@ -177,11 +177,12 @@ class MessageQuery(Query):
         query_dict.update(dict(type='thread'))
         return {'query': dict(has_parent=query_dict)}
 
-class PartQuery(Query):
+class BlockQuery(Query):
     def __init__(self, query, query_type='and'):
         # TODO[k]: files have content_type, size, filename, id.
         # We exclude the namespace_id.
-        attrs = ['id', 'object', 'namespace_id', 'content_type', 'size', 'filename', 'is_embedded']
+        attrs = ['id', 'object', 'namespace_id', 'content_type',
+                 'size', 'filename', 'is_embedded']
         self._fields = dict((k, None) for k in attrs)
 
         Query.__init__(self, query, query_type)
@@ -190,23 +191,23 @@ class PartQuery(Query):
         
 
     #we can do this later
-    #def apply_weights(self):
-    #    if not self.query or not 'all' in self.query:
-    #        return
+    def apply_weights(self):
+        if not self.query or not 'all' in self.query:
+            return
 
         # Arbitrarily assigned boost_score
-        #if 'weights' not in self.query:
-        #    for f in ['subject', 'snippet', 'body']:
-        #        self._fields[f] = 3
-        #else:
-        #    self._fields.update(self.query['weights'])
-        #    del self.query['weights']
+        if 'weights' not in self.query:
+            for f in ['subject', 'snippet', 'body']:
+                self._fields[f] = 3
+        else:
+            self._fields.update(self.query['weights'])
+            del self.query['weights']
 
     def generate(self):
         query_dict = self.convert()
 
        
-        query_dict.update(dict(type='message'))
+        query_dict.update(dict(type='block'))
        
         return {'query': dict(has_parent=query_dict)}
 

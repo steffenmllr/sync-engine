@@ -194,15 +194,18 @@ def index_attachments(message, msg_id, namespace_public_id, updated_since=None):
     search_engine = NamespaceSearchEngine(namespace_public_id)
 
     with session_scope() as db_session:
-        query = db_session.query(Message).get(msg_id)
-        for att in query.attachments:
-            encoded_obj = encode(
-                att, namespace_public_id=namespace_public_id,
-                format_address_fn=es_format_address_list,
-                format_tags_fn=es_format_tags_list)
-            if encoded_obj is not None:
-                encoded.append(encoded_obj)
-                print("indexed an attachment -------------------- supposedly" + str(encoded_obj))
+        msg_query = db_session.query(Message).get(msg_id)
+        #blocks = db_session.query(Block).filter(Block.id == msg_query.attachments.block_id)
+        for att in msg_query.attachments:
+            blocks = db_session.query(Block).filter(Block.id == att.block_id)
+            for block in blocks:
+                encoded_obj = encode(
+                    block, namespace_public_id=namespace_public_id,
+                    format_address_fn=es_format_address_list,
+                    format_tags_fn=es_format_tags_list)
+                if encoded_obj is not None:
+                    encoded.append(encoded_obj)
+                    print("encoded an attachment -------------------- supposedly" + str(encoded_obj))
     #if updated_since is not None:
     #    query = query.filter(Part.updated_at > updated_since)
 
@@ -223,7 +226,7 @@ def index_attachments(message, msg_id, namespace_public_id, updated_since=None):
     #        encoded.append(encoded_obj)
     #        print("----------------------yay------------------------")
 
-    indexed_count += search_engine.parts.bulk_index(encoded)
+    indexed_count += search_engine.blocks.bulk_index(encoded)
     
     return indexed_count
 

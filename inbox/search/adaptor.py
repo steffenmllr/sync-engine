@@ -7,7 +7,7 @@ from elasticsearch.helpers import bulk
 from inbox.config import config
 from inbox.log import get_logger
 log = get_logger()
-from inbox.search.query import DSLQueryEngine, MessageQuery, ThreadQuery, PartQuery
+from inbox.search.query import DSLQueryEngine, MessageQuery, ThreadQuery, BlockQuery
 from inbox.search.mappings import NAMESPACE_INDEX_MAPPING
 
 
@@ -57,7 +57,7 @@ class NamespaceSearchEngine(object):
         self._connection = new_connection()
         self.create_index()
         
-        self.parts = PartSearchAdaptor(index_id=namespace_public_id)
+        self.blocks = BlockSearchAdaptor(index_id=namespace_public_id)
         self.messages = MessageSearchAdaptor(index_id=namespace_public_id)
         self.threads = ThreadSearchAdaptor(index_id=namespace_public_id)
 
@@ -196,10 +196,10 @@ class BaseSearchAdaptor(object):
         log.debug('search query results', query=query, results=log_results)
 
 
-class PartSearchAdaptor(BaseSearchAdaptor):
+class BlockSearchAdaptor(BaseSearchAdaptor):
     def __init__(self, index_id):
         BaseSearchAdaptor.__init__(self, index_id=index_id, doc_type='block',
-                                   query_class=PartQuery)
+                                   query_class=BlockQuery)
 
     def index(self, object_repr):
         """(Re)index a part with API representation `object_repr`."""
