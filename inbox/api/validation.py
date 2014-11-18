@@ -241,6 +241,16 @@ def valid_rsvp(rsvp):
     return rsvp
 
 
+def valid_delta_object_types(types_arg):
+    types = [item.strip() for item in types_arg.split(',')]
+    allowed_types = ('contact', 'message', 'event', 'file', 'message', 'tag',
+                     'thread')
+    for type_ in types:
+        if type_ not in allowed_types:
+            raise InputError('Invalid object type {}'.format(type_))
+    return types
+
+
 def validate_draft_recipients(draft):
     """Check that all recipient emails are at least plausible email
     addresses, before we try to send a draft."""
