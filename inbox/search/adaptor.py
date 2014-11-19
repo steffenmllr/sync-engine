@@ -129,10 +129,9 @@ class BaseSearchAdaptor(object):
         index_args.update(**kwargs)
         try:
             self._connection.index(**index_args)
-        except elasticsearch.exceptions.TransportError:
-            log.error('Index failure',
-                      index=self.index_id, doc_type=self.doc_type,
-                      object_id=index_args['_id'])
+        except elasticsearch.exceptions.TransportError as e:
+            log.error('Index failure', error=e.error, index=self.index_id,
+                      doc_type=self.doc_type, object_id=index_args['_id'])
             raise
 
     @wrap_es_errors
@@ -152,13 +151,16 @@ class BaseSearchAdaptor(object):
 
         try:
             count, failures = bulk(self._connection, index_args)
-        except elasticsearch.exceptions.TransportError:
-            # TODO[k]: log here
-            log.error('Bulk index failure',
+        except elasticsearch.exceptions.TransportError as e:
+            log.error('Bulk index failure', error=e.error, index=self.index_id,
+                      doc_type=self.doc_type,
+                      object_ids=[i['_id'] for i in index_args])
+            raise
+        if count != len(objects):
+            log.error('Bulk index failure', error='Not all indices created',
                       index=self.index_id, doc_type=self.doc_type,
                       object_ids=[i['_id'] for i in index_args],
                       failures=failures)
-            raise
 
         return count
 
