@@ -17,14 +17,14 @@ __all__ = ['api_client', 'default_namespace']
 
 @yield_fixture(scope='function')
 def search_engine(db, default_namespace):
-    engine = NamespaceSearchEngine(default_namespace.public_id)
     index_namespace(default_namespace.public_id)
+
+    engine = NamespaceSearchEngine(default_namespace.public_id)
+    engine.refresh_index()
 
     yield engine
 
-    # TODO[k]:
-    # Why does deleting here fvck things up?
-    # engine.delete_index()
+    engine.delete_index()
 
 
 def test_index_mappings(db, default_namespace, search_engine):

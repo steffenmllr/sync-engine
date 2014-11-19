@@ -50,11 +50,12 @@ class NamespaceSearchEngine(object):
     MAPPINGS = NAMESPACE_INDEX_MAPPING
 
     def __init__(self, namespace_public_id):
-        # TODO(emfree): probably want to try to keep persistent connections
-        # around, instead of creating a new one each time.
         self.index_id = namespace_public_id
 
+        # TODO(emfree): probably want to try to keep persistent connections
+        # around, instead of creating a new one each time.
         self._connection = new_connection()
+
         self.create_index()
 
         self.messages = MessageSearchAdaptor(index_id=namespace_public_id)
@@ -73,8 +74,7 @@ class NamespaceSearchEngine(object):
                 body={'mappings': NAMESPACE_INDEX_MAPPING})
         except elasticsearch.exceptions.RequestError:
             # If the index already exists, ensure the right mappings are still
-            # configured.
-            # Only works if action.auto_create_index = False.
+            # configured. Only works if action.auto_create_index = False.
             return self.configure_index()
 
     @wrap_es_errors
@@ -90,6 +90,10 @@ class NamespaceSearchEngine(object):
     @wrap_es_errors
     def delete_index(self):
         self._connection.indices.delete(index=[self.index_id])
+
+    @wrap_es_errors
+    def refresh_index(self):
+        self._connection.indices.refresh(index=[self.index_id])
 
 
 class BaseSearchAdaptor(object):
