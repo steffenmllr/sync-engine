@@ -611,7 +611,7 @@ def event_create_api():
         calendar = get_calendar(data.get('calendar_id'),
                                 g.namespace, g.db_session)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     if calendar.read_only:
         return err(400, "Can't create events on read_only calendar.")
@@ -619,7 +619,7 @@ def event_create_api():
     try:
         valid_event(data)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     title = data.get('title', '')
     description = data.get('description')
@@ -706,7 +706,7 @@ def event_update_api(public_id):
     try:
         valid_event_update(data, g.namespace, g.db_session)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     # Convert the data into our types where necessary
     # e.g. timestamps, participant_list
@@ -726,7 +726,7 @@ def event_update_api(public_id):
         result = events.crud.update(g.namespace, g.db_session,
                                     public_id, data)
     except InputError as e:
-        return err(400, e.message)
+        return err(400, str(e))
 
     if result is None:
         return err(404, "Couldn't find event with id {0}".
@@ -988,7 +988,7 @@ def calendar_update_api(public_id):
     try:
         calendar = get_calendar(public_id, g.namespace, g.db_session)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     if calendar.read_only:
         return err(400, "Cannot update a read_only calendar.")
@@ -1008,7 +1008,7 @@ def calendar_delete_api(public_id):
     try:
         calendar = get_calendar(public_id, g.namespace, g.db_session)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     if calendar.read_only:
         return err(400, "Cannot delete a read_only calendar.")
@@ -1095,7 +1095,7 @@ def draft_create_api():
         replyto_thread = get_thread(data.get('thread_id'),
                                     g.namespace.id, g.db_session)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     try:
         draft = sendmail.create_draft(g.db_session, g.namespace.account, to,
@@ -1143,7 +1143,7 @@ def draft_update_api(public_id):
         files = get_attachments(data.get('file_ids'), g.namespace.id,
                                 g.db_session)
     except InputError as e:
-        return err(404, e.message)
+        return err(404, str(e))
 
     try:
         draft = sendmail.update_draft(g.db_session, g.namespace.account,
@@ -1252,7 +1252,7 @@ def draft_send_api():
             replyto_thread = get_thread(data.get('thread_id'),
                                         g.namespace.id, g.db_session)
         except InputError as e:
-            return err(404, e.message)
+            return err(404, str(e))
 
         try:
             draft = sendmail.create_draft(g.db_session, g.namespace.account,
