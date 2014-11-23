@@ -64,13 +64,14 @@ class SearchIndexService(Greenlet):
     def index(self, objects):
         namespace_map = defaultdict(lambda: defaultdict(list))
 
-        # TODO[k]: HANDLE DELETES
+        # TODO[k]: Check updates don't require special handling
         for obj in objects:
+            operation = 'update' if obj['event'] == 'modify' else obj['event']
             api_repr = obj['attributes']
             namespace_id = api_repr['namespace_id']
             type_ = api_repr['object']
 
-            namespace_map[namespace_id][type_].append(api_repr)
+            namespace_map[namespace_id][type_].append((operation, api_repr))
 
         for namespace_id in namespace_map:
             engine = NamespaceSearchEngine(namespace_id)

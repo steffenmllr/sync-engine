@@ -135,14 +135,17 @@ class BaseSearchAdaptor(object):
             raise
 
     @wrap_es_errors
-    def _bulk_index(self, objects, parent=None):
+    def _bulk(self, objects, parent=None):
         index_args = []
 
-        for object_repr in objects:
-            args = dict(_index=self.index_id,
+        for op, object_repr in objects:
+            args = dict(_op_type=op,
+                        _index=self.index_id,
                         _type=self.doc_type,
-                        _id=object_repr['id'],
-                        _source=object_repr)
+                        _id=object_repr['id'])
+
+            if op != 'delete':
+                args.update(dict(_source=object_repr))
 
             if parent is not None:
                 args.update(dict(_parent=object_repr[parent]))
@@ -211,7 +214,7 @@ class MessageSearchAdaptor(BaseSearchAdaptor):
         self._index_document(object_repr, parent=object_repr['thread_id'])
 
     def bulk_index(self, objects):
-        return self._bulk_index(objects, parent='thread_id')
+        return self._bulk(objects, parent='thread_id')
 
 
 class ThreadSearchAdaptor(BaseSearchAdaptor):
@@ -224,4 +227,4 @@ class ThreadSearchAdaptor(BaseSearchAdaptor):
         self._index_document(object_repr)
 
     def bulk_index(self, objects):
-        return self._bulk_index(objects)
+        return self._bulk(objects)
