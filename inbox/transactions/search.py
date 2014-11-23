@@ -5,6 +5,7 @@ from gevent import Greenlet, sleep
 from inbox.log import get_logger
 logger = get_logger()
 from inbox.api.kellogs import APIEncoder
+
 from inbox.models.session import session_scope
 from inbox.models.util import transaction_objects
 from inbox.search.adaptor import NamespaceSearchEngine
@@ -12,6 +13,12 @@ from inbox.transactions.delta_sync import format_transactions_after_pointer
 
 
 class SearchIndexService(Greenlet):
+    """
+    Poll the transaction log for message, thread operations
+    (inserts, updates, deletes) for all namespaces and perform the
+    corresponding Elasticsearch index operations.
+
+    """
     def __init__(self, poll_interval=30, chunk_size=100):
         self.poll_interval = poll_interval
         self.chunk_size = chunk_size
@@ -26,7 +33,7 @@ class SearchIndexService(Greenlet):
 
     def _run(self):
         """
-        Index into Elasticsearch the threads, messages of all namespaces.
+        Index into Elasticsearch the thread, message of all namespaces.
 
         """
         # Indexing is namespace agnostic.
@@ -66,7 +73,8 @@ class SearchIndexService(Greenlet):
 
         # TODO[k]: Check updates don't require special handling
         for obj in objects:
-            operation = 'update' if obj['event'] == 'modify' else obj['event']
+            operation = 'index' if obj['event'] in ['create', 'modify'] else \
+                obj['event']
             api_repr = obj['attributes']
             namespace_id = api_repr['namespace_id']
             type_ = api_repr['object']
