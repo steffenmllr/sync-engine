@@ -18,8 +18,8 @@ class SearchIndexService(Greenlet):
 
         self.encoder = APIEncoder()
 
-        # Get persisted
-        self.transaction_pointer = None
+        # TODO[k]: Get persisted txn ptr. to support restarts
+        self.transaction_pointer = '0'
 
         self.log = logger.new(component='search-index')
         Greenlet.__init__(self)
@@ -46,32 +46,39 @@ class SearchIndexService(Greenlet):
             with session_scope() as db_session:
                 deltas, new_pointer = format_transactions_after_pointer(
                     namespace_id, self.transaction_pointer, db_session,
-                    self.chunk_size, exclude_types)
+                    self.chunk_size,
+                    exclude_types)
 
             if new_pointer is not None and \
                     new_pointer != self.transaction_pointer:
 
+                # TODO[k]: We ideally want to index chunk_size at a time.
+                # This currently indexes <= chunk_size, and it varies each time.
                 self.index(deltas)
+
+                # TODO[k]: Persist txn ptr.
                 self.transaction_pointer = new_pointer
-                # Persist txn ptr.
             else:
                 sleep(self.poll_interval)
 
     def index(self, objects):
         namespace_map = defaultdict(lambda: defaultdict(list))
 
+        # TODO[k]: HANDLE DELETES
         for obj in objects:
-            encoded_obj = self.encoder.cereal(obj)
-            namespace_map[obj.namespace_id][obj.object_type].append(
-                encoded_obj)
+            api_repr = obj['attributes']
+            namespace_id = api_repr['namespace_id']
+            type_ = api_repr['object']
+
+            namespace_map[namespace_id][type_].append(api_repr)
 
         for namespace_id in namespace_map:
             engine = NamespaceSearchEngine(namespace_id)
 
             messages = namespace_map[namespace_id]['message']
             if messages:
-                engine.messages.index(messages)
+                engine.messages.bulk_index(messages)
 
             threads = namespace_map[namespace_id]['thread']
             if threads:
-                engine.threads.index(threads)
+                engine.threads.bulk_index(threads)

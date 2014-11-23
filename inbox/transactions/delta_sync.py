@@ -150,8 +150,7 @@ def _format_transaction(transaction):
         'object': transaction.object_type,
         'event': event,
         'id': transaction.object_public_id,
-        'cursor': transaction.public_id,
-        'namespace_id': transaction.namespace_id
+        'cursor': transaction.public_id
     }
     if transaction.command != 'delete':
         delta['attributes'] = transaction.snapshot
