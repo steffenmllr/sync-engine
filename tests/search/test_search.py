@@ -38,6 +38,28 @@ def search_engine(db, default_namespace):
     engine.delete_index()
 
 
+# TODO[k]
+# def test_search_index_service(search_index_service, db, default_namespace,
+#                               api_client):
+#     from inbox.models import Transaction
+
+#     q = db.session.query(Transaction).filter(
+#         Transaction.namespace_id == default_namespace.id)
+
+#     message_count = q.filter(Transaction.object_type == 'message').count()
+#     thread_count = q.filter(Transaction.object_type == 'thread').count()
+
+#     resp = api_client.post_data('/messages/search', {})
+#     assert resp.status_code == 200
+#     results = json.loads(resp.data)
+#     assert len(results) == message_count
+
+#     resp = api_client.post_data('/threads/search', {})
+#     assert resp.status_code == 200
+#     results = json.loads(resp.data)
+#     assert len(results) == thread_count
+
+
 def test_index_creation(db, default_namespace, search_engine):
     namespace_id = default_namespace.id
     namespace_public_id = default_namespace.public_id
@@ -228,8 +250,7 @@ def test_thread_search(db, api_client, search_engine):
 
 
 # TODO[k]
-def test_parent_child_search(db, api_client, search_engine):
-    pass
+#def test_parent_child_search(db, api_client, search_engine):
     # message = db.session.query(Message).get(2)
     # from_addr = message.from_addr[0][1]
 
@@ -288,24 +309,3 @@ def test_search_response(db, api_client, search_engine):
 
     assert sorted(search_repr['tags']) == sorted(api_repr['tags'])
     assert search_repr['participants'] == api_repr['participants']
-
-
-def test_search_index_service(search_index_service, db, default_namespace,
-                              api_client):
-    from inbox.models import Transaction
-
-    q = db.session.query(Transaction).filter(
-        Transaction.namespace_id == default_namespace.id)
-
-    message_count = q.filter(Transaction.object_type == 'message').count()
-    thread_count = q.filter(Transaction.object_type == 'thread').count()
-
-    resp = api_client.post_data('/messages/search', {})
-    assert resp.status_code == 200
-    results = json.loads(resp.data)
-    assert len(results) == message_count
-
-    resp = api_client.post_data('/threads/search', {})
-    assert resp.status_code == 200
-    results = json.loads(resp.data)
-    assert len(results) == thread_count

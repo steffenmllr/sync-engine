@@ -154,6 +154,9 @@ class BaseSearchAdaptor(object):
 
     @wrap_es_errors
     def _bulk(self, objects, parent=None):
+        """
+
+        """
         index_args = []
 
         for op, object_repr in objects:
@@ -224,12 +227,12 @@ class BaseSearchAdaptor(object):
 
 
 class MessageSearchAdaptor(BaseSearchAdaptor):
+    """ Adaptor for the 'message' document type. """
     def __init__(self, index_id, log):
         BaseSearchAdaptor.__init__(self, index_id=index_id, doc_type='message',
                                    query_class=MessageQuery, log=log)
 
     def index(self, object_repr):
-        """ (Re)index a message with API representation `object_repr`. """
         self._index_document(object_repr, parent=object_repr['thread_id'])
 
     def bulk_index(self, objects):
@@ -237,12 +240,12 @@ class MessageSearchAdaptor(BaseSearchAdaptor):
 
 
 class ThreadSearchAdaptor(BaseSearchAdaptor):
+    """ Adaptor for the 'thread' document type. """
     def __init__(self, index_id, log):
         BaseSearchAdaptor.__init__(self, index_id=index_id, doc_type='thread',
                                    query_class=ThreadQuery, log=log)
 
     def index(self, object_repr):
-        """ (Re)index a thread with API representation `object_repr`. """
         self._index_document(object_repr)
 
     def bulk_index(self, objects):

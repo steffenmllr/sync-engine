@@ -3,7 +3,7 @@ from collections import defaultdict
 from gevent import Greenlet, sleep
 
 from inbox.log import get_logger
-logger = get_logger()
+log = get_logger()
 from inbox.api.kellogs import APIEncoder
 
 from inbox.models.session import session_scope
@@ -28,12 +28,12 @@ class SearchIndexService(Greenlet):
 
         self.transaction_pointer = None
 
-        self.log = logger.new(component='search-index')
+        self.log = log.new(component='search-index')
         Greenlet.__init__(self)
 
     def _run(self):
         """
-        Index into Elasticsearch the thread, message of all namespaces.
+        Index into Elasticsearch the threads, messages of all namespaces.
 
         """
         # Indexing is namespace agnostic.
@@ -49,10 +49,10 @@ class SearchIndexService(Greenlet):
                          object_types.iteritems() if model_name not in
                          ['message', 'thread']]
 
-        # Get persisted txn ptr. when process is restarted
         with session_scope() as db_session:
             pointer, = db_session.query(SearchIndexCursor.cursor).first()
-            self.transaction_pointer = pointer or '0'
+
+        self.transaction_pointer = pointer or '0'
 
         while True:
             with session_scope() as db_session:
@@ -65,20 +65,21 @@ class SearchIndexService(Greenlet):
             if new_pointer is not None and \
                     new_pointer != self.transaction_pointer:
                 self.index(deltas)
-
-                # Persist txn ptr. to support restarts,
-                # update self.transaction_pointer too.
                 self.update_pointer(new_pointer)
             else:
                 sleep(self.poll_interval)
 
     def index(self, objects):
+        """
+        Translate database operations to Elasticsearch index operations
+        and perform them.
+
+        """
         namespace_map = defaultdict(lambda: defaultdict(list))
 
         for obj in objects:
             namespace_id = obj['namespace_id']
             type_ = obj['object']
-
             operation = obj['event']
             if operation in ['create', 'modify']:
                 # In order for Elasticsearch to do the right thing w.r.t
@@ -91,18 +92,30 @@ class SearchIndexService(Greenlet):
 
             namespace_map[namespace_id][type_].append((operation, api_repr))
 
+        self.log.info('namespaces to index count', count=len(namespace_map))
+
         for namespace_id in namespace_map:
             engine = NamespaceSearchEngine(namespace_id)
 
             messages = namespace_map[namespace_id]['message']
             if messages:
-                engine.messages.bulk_index(messages)
+                message_count = engine.messages.bulk_index(messages)
 
             threads = namespace_map[namespace_id]['thread']
             if threads:
-                engine.threads.bulk_index(threads)
+                thread_count = engine.threads.bulk_index(threads)
+
+            self.log.info('per-namespace index counts',
+                          namespace_id=namespace_id,
+                          message_count=message_count,
+                          thread_count=thread_count)
 
     def update_pointer(self, new_pointer):
+        """
+        Persist transaction pointer to support restarts, update
+        self.transaction_pointer.
+
+        """
         with session_scope() as db_session:
             cursor = db_session.query(SearchIndexCursor).first()
             if cursor is None:
