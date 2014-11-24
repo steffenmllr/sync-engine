@@ -8,6 +8,7 @@ from inbox.api.kellogs import APIEncoder
 
 from inbox.models.session import session_scope
 from inbox.models.util import transaction_objects
+from inbox.models.search import SearchIndexCursor
 from inbox.search.adaptor import NamespaceSearchEngine
 from inbox.transactions.delta_sync import format_transactions_after_pointer
 
@@ -25,8 +26,7 @@ class SearchIndexService(Greenlet):
 
         self.encoder = APIEncoder()
 
-        # TODO[k]: Get persisted txn ptr. to support restarts
-        self.transaction_pointer = '0'
+        self.transaction_pointer = None
 
         self.log = logger.new(component='search-index')
         Greenlet.__init__(self)
@@ -49,22 +49,26 @@ class SearchIndexService(Greenlet):
                          object_types.iteritems() if model_name not in
                          ['message', 'thread']]
 
+        # Get persisted txn ptr. when process is restarted
+        with session_scope() as db_session:
+            pointer, = db_session.query(SearchIndexCursor.cursor).first()
+            self.transaction_pointer = pointer or '0'
+
         while True:
             with session_scope() as db_session:
                 deltas, new_pointer = format_transactions_after_pointer(
                     namespace_id, self.transaction_pointer, db_session,
-                    self.chunk_size,
-                    exclude_types)
+                    self.chunk_size, exclude_types)
 
+            # TODO[k]: We ideally want to index chunk_size at a time.
+            # This currently indexes <= chunk_size, and it varies each time.
             if new_pointer is not None and \
                     new_pointer != self.transaction_pointer:
-
-                # TODO[k]: We ideally want to index chunk_size at a time.
-                # This currently indexes <= chunk_size, and it varies each time.
                 self.index(deltas)
 
-                # TODO[k]: Persist txn ptr.
-                self.transaction_pointer = new_pointer
+                # Persist txn ptr. to support restarts,
+                # update self.transaction_pointer too.
+                self.update_pointer(new_pointer)
             else:
                 sleep(self.poll_interval)
 
@@ -97,3 +101,15 @@ class SearchIndexService(Greenlet):
             threads = namespace_map[namespace_id]['thread']
             if threads:
                 engine.threads.bulk_index(threads)
+
+    def update_pointer(self, new_pointer):
+        with session_scope() as db_session:
+            cursor = db_session.query(SearchIndexCursor).first()
+            if cursor is None:
+                cursor = SearchIndexCursor()
+                db_session.add(cursor)
+
+            cursor.cursor = new_pointer
+            db_session.commit()
+
+        self.transaction_pointer = new_pointer
