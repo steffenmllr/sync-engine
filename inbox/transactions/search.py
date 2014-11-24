@@ -71,13 +71,19 @@ class SearchIndexService(Greenlet):
     def index(self, objects):
         namespace_map = defaultdict(lambda: defaultdict(list))
 
-        # TODO[k]: Check updates don't require special handling
         for obj in objects:
-            operation = 'index' if obj['event'] in ['create', 'modify'] else \
-                obj['event']
-            api_repr = obj['attributes']
-            namespace_id = api_repr['namespace_id']
-            type_ = api_repr['object']
+            namespace_id = obj['namespace_id']
+            type_ = obj['object']
+
+            operation = obj['event']
+            if operation in ['create', 'modify']:
+                # In order for Elasticsearch to do the right thing w.r.t
+                # creating v/s. updating an index, the op_type must be set to
+                # 'index'.
+                operation = 'index'
+                api_repr = obj['attributes']
+            else:
+                api_repr = dict(id=obj['id'])
 
             namespace_map[namespace_id][type_].append((operation, api_repr))
 

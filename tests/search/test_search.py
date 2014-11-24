@@ -1,6 +1,7 @@
 #import datetime
 import json
 
+from gevent import monkey
 from pytest import yield_fixture
 
 from inbox.models.message import Message
@@ -13,6 +14,16 @@ from inbox.search.mappings import THREAD_MAPPING, MESSAGE_MAPPING
 from tests.util.base import api_client, default_namespace
 
 __all__ = ['api_client', 'default_namespace']
+
+
+@yield_fixture(scope='function')
+def search_index_service(db):
+    # Based on the syncback_service fixture in tests/util/base.
+    monkey.patch_all(aggressive=False)
+    from inbox.transactions.search import SearchIndexService
+    s = SearchIndexService(poll_interval=0.1)
+    s.start()
+    yield s
 
 
 @yield_fixture(scope='function')
@@ -277,3 +288,24 @@ def test_search_response(db, api_client, search_engine):
 
     assert sorted(search_repr['tags']) == sorted(api_repr['tags'])
     assert search_repr['participants'] == api_repr['participants']
+
+
+def test_search_index_service(search_index_service, db, default_namespace,
+                              api_client):
+    from inbox.models import Transaction
+
+    q = db.session.query(Transaction).filter(
+        Transaction.namespace_id == default_namespace.id)
+
+    message_count = q.filter(Transaction.object_type == 'message').count()
+    thread_count = q.filter(Transaction.object_type == 'thread').count()
+
+    resp = api_client.post_data('/messages/search', {})
+    assert resp.status_code == 200
+    results = json.loads(resp.data)
+    assert len(results) == message_count
+
+    resp = api_client.post_data('/threads/search', {})
+    assert resp.status_code == 200
+    results = json.loads(resp.data)
+    assert len(results) == thread_count
