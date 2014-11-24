@@ -1,8 +1,14 @@
-from sqlalchemy import Column
+from sqlalchemy import Column, Integer, ForeignKey
 
 from inbox.models.base import MailSyncBase
-from inbox.sqlalchemy_ext.util import Base36UID
+from inbox.models.transaction import Transaction
 
 
 class SearchIndexCursor(MailSyncBase):
-    cursor = Column(Base36UID, nullable=True, index=True)
+    """
+    Store the id of the last Transaction indexed into Elasticsearch.
+    Is namespace-agnostic.
+
+    """
+    transaction_id = Column(Integer, ForeignKey(Transaction.id),
+                            nullable=True, index=True)

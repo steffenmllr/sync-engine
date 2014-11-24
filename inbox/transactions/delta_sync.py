@@ -43,7 +43,8 @@ def get_transaction_cursor_near_timestamp(namespace_id, timestamp, db_session):
 
 
 def format_transactions_after_pointer(namespace_id, pointer, db_session,
-                                      result_limit, exclude_types=None):
+                                      result_limit, format_transaction_fn,
+                                      exclude_types=None):
     """
     Return a pair (deltas, new_pointer), where deltas is a list of change
     events, represented as dictionaries:
@@ -84,6 +85,7 @@ def format_transactions_after_pointer(namespace_id, pointer, db_session,
         filter(*filters).limit(result_limit)
 
     transactions = transactions.all()
+
     if not transactions:
         return ([], pointer)
 
@@ -100,7 +102,7 @@ def format_transactions_after_pointer(namespace_id, pointer, db_session,
         if object_identifier in object_identifiers:
             continue
         object_identifiers.add(object_identifier)
-        delta = _format_transaction(transaction)
+        delta = format_transaction_fn(transaction)
         deltas.append(delta)
 
     return (list(reversed(deltas)), transactions[-1].id)
@@ -130,7 +132,7 @@ def streaming_change_generator(namespace_id, poll_interval, timeout,
         with session_scope() as db_session:
             deltas, new_pointer = format_transactions_after_pointer(
                 namespace_id, transaction_pointer, db_session, 100,
-                exclude_types)
+                _format_transaction_for_delta_sync, exclude_types)
         if new_pointer is not None and new_pointer != transaction_pointer:
             transaction_pointer = new_pointer
             for delta in deltas:
@@ -139,7 +141,7 @@ def streaming_change_generator(namespace_id, poll_interval, timeout,
             gevent.sleep(poll_interval)
 
 
-def _format_transaction(transaction):
+def _format_transaction_for_delta_sync(transaction):
     if transaction.command == 'insert':
         event = 'create'
     elif transaction.command == 'update':
@@ -150,8 +152,7 @@ def _format_transaction(transaction):
         'object': transaction.object_type,
         'event': event,
         'id': transaction.object_public_id,
-        'cursor': transaction.public_id,
-        'namespace_id': transaction.namespace.public_id
+        'cursor': transaction.public_id
     }
     if transaction.command != 'delete':
         delta['attributes'] = transaction.snapshot
