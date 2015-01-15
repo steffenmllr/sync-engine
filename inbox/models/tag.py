@@ -31,9 +31,10 @@ class Tag(MailSyncBase, HasRevisions):
     API_OBJECT_NAME = 'tag'
     namespace = relationship(
         Namespace,
-        backref=backref('tags',
-                        collection_class=attribute_mapped_collection('public_id'),
-                        passive_deletes=True),
+        backref=backref(
+            'tags',
+            collection_class=attribute_mapped_collection('public_id'),
+            passive_deletes=True),
         load_on_pending=True)
     namespace_id = Column(Integer, ForeignKey(
         'namespace.id', ondelete='CASCADE'), nullable=False)
