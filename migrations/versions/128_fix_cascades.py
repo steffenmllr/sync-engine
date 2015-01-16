@@ -23,7 +23,7 @@ def upgrade():
         ALTER TABLE easfoldersyncstatus DROP FOREIGN KEY easfoldersyncstatus_ibfk_3;
         ALTER TABLE easfoldersyncstatus ADD CONSTRAINT easfoldersyncstatus_ibfk_3 FOREIGN KEY (folder_id) REFERENCES folder(id) ON DELETE CASCADE;
         ALTER TABLE message DROP FOREIGN KEY full_body_id_fk;
-        ALTER TABLE message ADD CONSTRAINT full_body_id_fk FOREIGN KEY (full_body_id) REFERENCES block(id) ON DELETE CASCADE;
+        ALTER TABLE message ADD CONSTRAINT full_body_id_fk FOREIGN KEY (full_body_id) REFERENCES block(id) ON DELETE SET NULL;
         '''
     )
 
