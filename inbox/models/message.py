@@ -114,7 +114,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     # A reference to the block holding the full contents of the message
     full_body_id = Column(ForeignKey('block.id',
                                      name='full_body_id_fk',
-                                     ondelete='CASCADE'),
+                                     ondelete='SET NULL'),
                           nullable=True)
     full_body = relationship('Block', cascade='all, delete')
 
