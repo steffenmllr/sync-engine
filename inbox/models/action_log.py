@@ -63,7 +63,6 @@ def schedule_action(func_name, record, namespace_id, db_session, **kwargs):
 
 
 class ActionLog(MailSyncBase):
-    # STOPSHIP(emfree) should we set ondelete='CASCADE' here?
     namespace_id = Column(ForeignKey(Namespace.id, ondelete='CASCADE'),
                           nullable=False,
                           index=True)
