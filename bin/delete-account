@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+import click
+from sqlalchemy.orm.exc import NoResultFound
+from sys import exit
+
+from inbox.models.account import Account
+from inbox.models.backends.eas import EASAccount
+from inbox.models.namespace import Namespace
+from inbox.models.session import session_scope as mailsync_session_scope
+
+
+@click.command()
+@click.option('--account-id', '-a', type=int, required=True)
+def main(account_id):
+    with mailsync_session_scope() as mailsync_session:
+        try:
+            account = mailsync_session.query(Account).\
+                filter_by(id=account_id).one()
+            prompt = 'Hey buddy, are you sure? [y/N] '.format(account_id)
+            proceed = raw_input(prompt).strip().lower()
+            if proceed == '' or proceed == 'n':
+                print 'Bailing!'
+            elif proceed == 'y':
+                mailsync_session.delete(account)
+                mailsync_session.commit()
+                print 'You got what you asked for!'
+                exit(0)
+            else:
+                print 'I didn\'t get it, bailing!'
+                exit(22)
+        except NoResultFound:
+            print 'Nothing to do, bailing!'
+            exit(22)
+
+
+if __name__ == '__main__':
+    main()
