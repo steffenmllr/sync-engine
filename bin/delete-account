@@ -5,8 +5,6 @@ from sqlalchemy.orm.exc import NoResultFound
 from sys import exit
 
 from inbox.models.account import Account
-from inbox.models.backends.eas import EASAccount
-from inbox.models.namespace import Namespace
 from inbox.models.session import session_scope as mailsync_session_scope
 
 
