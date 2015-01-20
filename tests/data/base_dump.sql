@@ -2,7 +2,7 @@
 --
 -- Host: localhost    Database: test
 -- ------------------------------------------------------
--- Server version	5.5.40-0ubuntu0.12.04.1
+-- Server version	5.5.40-0ubuntu0.12.04.1-log
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -1090,7 +1090,7 @@ CREATE TABLE `message` (
   KEY `ix_message_subject` (`subject`(191)),
   KEY `ix_message_received_date` (`received_date`),
   KEY `full_body_id_fk` (`full_body_id`),
-  CONSTRAINT `full_body_id_fk` FOREIGN KEY (`full_body_id`) REFERENCES `block` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `full_body_id_fk` FOREIGN KEY (`full_body_id`) REFERENCES `block` (`id`),
   CONSTRAINT `message_ibfk_1` FOREIGN KEY (`thread_id`) REFERENCES `thread` (`id`) ON DELETE CASCADE,
   CONSTRAINT `message_ibfk_2` FOREIGN KEY (`resolved_message_id`) REFERENCES `message` (`id`),
   CONSTRAINT `message_ibfk_3` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`)
@@ -1740,4 +1740,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-01-16 10:42:25
+-- Dump completed on 2015-01-20 10:21:17
