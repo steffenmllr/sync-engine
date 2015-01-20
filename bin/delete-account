@@ -15,20 +15,26 @@ def main(account_id):
         try:
             account = mailsync_session.query(Account).\
                 filter_by(id=account_id).one()
-            prompt = 'Hey buddy, are you sure? [y/N] '.format(account_id)
+            prompt = 'hey buddy, are you sure? [y/N] '.format(account_id)
             proceed = raw_input(prompt).strip().lower()
-            if proceed == '' or proceed == 'n':
-                print 'Bailing!'
+            if proceed != 'y':
+                # assuming 'N' for safety
+                print 'bailing!'
             elif proceed == 'y':
+                mailsync_session.execute(
+                    '''UPDATE message
+                    SET full_body_id = NULL
+                    WHERE namespace_id = :namespace_id;''',
+                    {'namespace_id': account.namespace.id})
                 mailsync_session.delete(account)
                 mailsync_session.commit()
-                print 'You got what you asked for!'
+                print 'you got what you asked for!'
                 exit(0)
             else:
-                print 'I didn\'t get it, bailing!'
+                print 'I didn\'t get your answer, bailing!'
                 exit(22)
         except NoResultFound:
-            print 'Nothing to do, bailing!'
+            print 'account {} not found'.format(account_id)
             exit(22)
 
 

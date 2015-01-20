@@ -11,7 +11,6 @@ revision = '284227d72f51'
 down_revision = '581e91bd7141'
 
 from alembic import op
-import sqlalchemy as sa
 
 
 def upgrade():
@@ -22,8 +21,6 @@ def upgrade():
         ALTER TABLE actionlog ADD CONSTRAINT actionlog_ibfk_1 FOREIGN KEY (namespace_id) REFERENCES namespace(id) ON DELETE CASCADE;
         ALTER TABLE easfoldersyncstatus DROP FOREIGN KEY easfoldersyncstatus_ibfk_3;
         ALTER TABLE easfoldersyncstatus ADD CONSTRAINT easfoldersyncstatus_ibfk_3 FOREIGN KEY (folder_id) REFERENCES folder(id) ON DELETE CASCADE;
-        ALTER TABLE message DROP FOREIGN KEY full_body_id_fk;
-        ALTER TABLE message ADD CONSTRAINT full_body_id_fk FOREIGN KEY (full_body_id) REFERENCES block(id) ON DELETE SET NULL;
         '''
     )
 
@@ -36,7 +33,5 @@ def downgrade():
         ALTER TABLE actionlog ADD CONSTRAINT actionlog_ibfk_1 FOREIGN KEY (namespace_id) REFERENCES namespace(id);
         ALTER TABLE easfoldersyncstatus DROP FOREIGN KEY easfoldersyncstatus_ibfk_3;
         ALTER TABLE easfoldersyncstatus ADD CONSTRAINT easfoldersyncstatus_ibfk_3 FOREIGN KEY (folder_id) REFERENCES folder(id);
-        ALTER TABLE message DROP FOREIGN KEY full_body_id_fk;
-        ALTER TABLE message ADD CONSTRAINT full_body_id_fk FOREIGN KEY (full_body_id) REFERENCES block(id);
         '''
     )
