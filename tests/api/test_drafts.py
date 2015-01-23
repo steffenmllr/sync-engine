@@ -4,13 +4,11 @@ import json
 import os
 from datetime import datetime
 
-import gevent
 import pytest
 
-from tests.util.base import (patch_network_functions, api_client,
-                             syncback_service, default_account)
+from tests.util.base import api_client, default_account
 
-__all__ = ['patch_network_functions', 'api_client', 'syncback_service']
+__all__ = ['default_account', 'api_client']
 
 NAMESPACE_ID = 1
 
@@ -304,32 +302,6 @@ def test_delete_remote_draft(db, api_client):
     assert not drafts
 
 
-def test_send(patch_network_functions, api_client, example_draft,
-              syncback_service, default_account):
-    r = api_client.post_data('/drafts', example_draft)
-    draft_public_id = json.loads(r.data)['id']
-    version = json.loads(r.data)['version']
-
-    r = api_client.post_data('/send',
-                             {'draft_id': draft_public_id,
-                              'version': version})
-
-    # TODO(emfree) do this more rigorously
-    gevent.sleep(0.5)
-
-    drafts = api_client.get_data('/drafts')
-    threads_with_drafts = api_client.get_data('/threads?tag=drafts')
-    assert not drafts
-    assert not threads_with_drafts
-
-    sent_threads = api_client.get_data('/threads?tag=sent')
-    assert len(sent_threads) == 1
-
-    message = api_client.get_data('/messages/{}'.format(draft_public_id))
-    assert message['state'] == 'sent'
-    assert message['object'] == 'message'
-
-
 def test_conflicting_updates(api_client):
     original_draft = {
         'subject': 'parent draft',
@@ -409,16 +381,3 @@ def test_contacts_updated(api_client):
 
     r = api_client.get_data('/threads?to=joe@example.com')
     assert len(r) == 1
-
-
-def test_rate_limiting(patch_network_functions, api_client):
-    """Test that sending is rate-limited appropriately.
-    (Relies on a low value for DAILY_SENDING_LIMIT being set in the test
-    config, for performance.)"""
-    for _ in range(7):
-        r = api_client.post_data('/send', {'to': [{'email':
-                                                   'kermit@example.com'}]})
-        assert r.status_code == 200
-    r = api_client.post_data('/send', {'to': [{'email':
-                                               'kermit@example.com'}]})
-    assert r.status_code == 429

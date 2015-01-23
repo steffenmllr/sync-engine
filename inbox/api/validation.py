@@ -3,9 +3,9 @@ from datetime import datetime
 from flanker.addresslib import address
 from flask.ext.restful import reqparse
 from sqlalchemy.orm.exc import NoResultFound
-from inbox.models import Account, Calendar, Tag, Thread, Block
+from inbox.models import Account, Calendar, Tag, Thread, Block, Message
 from inbox.models.when import parse_as_when
-from inbox.api.err import InputError, NotFoundError
+from inbox.api.err import InputError, NotFoundError, ConflictError
 
 MAX_LIMIT = 1000
 
@@ -83,6 +83,26 @@ def strict_parse_args(parser, raw_args):
         raise InputError('Unexpected query parameters {}'.format(
                          unexpected_params))
     return args
+
+
+def get_draft(draft_public_id, version, namespace_id, db_session):
+    valid_public_id(draft_public_id)
+    if version is None:
+        raise InputError('Must specify draft version')
+    try:
+        draft = db_session.query(Message).filter(
+            Message.public_id == draft_public_id,
+            Message.namespace_id == namespace_id).one()
+    except NoResultFound:
+        raise NotFoundError("Couldn't find draft {}".format(draft_public_id))
+
+    if draft.is_sent or not draft.is_draft:
+        raise InputError('Message {} is not a draft'.format(draft_public_id))
+    if draft.version != version:
+        raise ConflictError(
+            'Draft {0}.{1} has already been updated to version {2}'.
+            format(draft_public_id, version, draft.version))
+    return draft
 
 
 def get_tags(tag_public_ids, namespace_id, db_session):
