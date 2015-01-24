@@ -22,7 +22,7 @@ SOURCE_APP_NAME = 'InboxApp Contact Sync Engine'
 
 GoogleContact = namedtuple(
     'GoogleContact',
-    'namespace_id uid name email_address raw_data deleted')
+    'uid name email_address raw_data deleted')
 
 
 class GoogleContactsProvider(BaseSyncProvider):
@@ -136,11 +136,10 @@ class GoogleContactsProvider(BaseSyncProvider):
         deleted = google_contact.deleted is not None
 
         return GoogleContact(
-            namespace_id=self.namespace_id, uid=g_id, name=name,
-            email_address=email_address, deleted=deleted,
+            uid=g_id, name=name, email_address=email_address, deleted=deleted,
             raw_data=raw_data)
 
-    def get_items(self, sync_from_time=None, max_results=100000):
+    def get_contacts(self, **kwargs):
         """
         Fetches and parses fresh contact data.
 
@@ -165,13 +164,16 @@ class GoogleContactsProvider(BaseSyncProvider):
             insufficient permissions, respectively.
 
         """
+        sync_from_time = kwargs.get('sync_from_time')
+        max_results = kwargs.get('max_results', 100000)
+
         query = gdata.contacts.client.ContactsQuery()
         # TODO(emfree): Implement batch fetching
         # Note: The Google contacts API will only return 25 results if
         # query.max_results is not explicitly set, so have to set it to a large
         # number by default.
-        query.max_results = max_results
         query.updated_min = sync_from_time
+        query.max_results = max_results
         query.showdeleted = True
 
         google_client = self._get_google_client()

@@ -236,16 +236,14 @@ class ContactsProviderStub(object):
 
     def supply_contact(self, name, email_address, deleted=False):
         from inbox.contacts.google import GoogleContact
-        self._contacts.append(GoogleContact(namespace_id=1,
-                                            uid=str(self._next_uid),
+        self._contacts.append(GoogleContact(uid=str(self._next_uid),
                                             name=name,
-                                            provider_name=self.PROVIDER_NAME,
                                             email_address=email_address,
                                             deleted=deleted,
                                             raw_data=None))
         self._next_uid += 1
 
-    def get_items(self, *args, **kwargs):
+    def get_contacts(self, *args, **kwargs):
         return self._contacts
 
 

@@ -16,6 +16,7 @@ import sqlalchemy as sa
 
 def upgrade():
     connection = op.get_bind()
+
     connection.execute(
         sa.sql.text(
             '''
@@ -23,9 +24,9 @@ def upgrade():
             '''
         )
     )
-    op.drop_column('contact', 'provider_name')
 
     op.drop_constraint('uid', 'contact', type_='unique')
+    op.drop_column('contact', 'provider_name')
     op.drop_column('contact', 'source')
 
     op.create_unique_constraint('uid', 'contact',

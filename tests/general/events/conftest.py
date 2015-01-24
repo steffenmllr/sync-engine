@@ -27,8 +27,7 @@ class EventsProviderStub(object):
         from inbox.events.google import GoogleEvent
 
         when = '2011-01-21 02:37:21'
-        self._events.append(GoogleEvent(namespace_id=1,
-                                        uid=str(self._next_uid),
+        self._events.append(GoogleEvent(uid=str(self._next_uid),
                                         title=title,
                                         description='',
                                         location='',
@@ -42,13 +41,15 @@ class EventsProviderStub(object):
                                         participants=[]))
         self._next_uid += 1
 
-    def get_calendars(self):
-        name = '{}._calendar'.format(self.PROVIDER_NAME)
-        return [dict(uid=1,
-                     name=name,
-                     read_only=True,
-                     description='',
-                     deleted=False)]
+    def get_calendars(self, *args, **kwargs):
+        from inbox.events.google import GoogleCalendar
 
-    def get_events(self, calendar_uid, sync_from_time=None):
+        name = '{}._calendar'.format(self.PROVIDER_NAME)
+        return [GoogleCalendar(uid=str(1),
+                               name=name,
+                               read_only=True,
+                               description='',
+                               deleted=False)]
+
+    def get_events(self, *args, **kwargs):
         return self._events

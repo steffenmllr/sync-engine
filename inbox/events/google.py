@@ -27,9 +27,13 @@ logger = get_logger()
 
 SOURCE_APP_NAME = 'InboxApp Calendar Sync Engine'
 
+GoogleCalendar = namedtuple(
+    'GoogleCalendar',
+    'uid name read_only description deleted')
+
 GoogleEvent = namedtuple(
     'GoogleEvent',
-    'namespace_id uid raw_data title start end all_day description location '
+    'uid raw_data title start end all_day description location '
     'owner read_only participants deleted')
 
 
@@ -100,12 +104,14 @@ class GoogleEventsProvider(BaseSyncProvider):
                 db_session.commit()
                 raise ConnectionError
 
-    def get_calendars(self, page_token=None, max_results=250):
+    def get_calendars(self, **kwargs):
+        max_results = kwargs.get('max_results', 250)
         show_deleted = True
-        calendars = []
+        page_token = None
 
         service = self._get_google_service()
 
+        calendars = []
         while True:
             calendar_list = service.calendarList().list(
                     showDeleted=show_deleted,
@@ -125,11 +131,10 @@ class GoogleEventsProvider(BaseSyncProvider):
         description = calendar.get('description', None)
         deleted = calendar.get('deleted', False)
 
-        return dict(uid=uid, name=name, read_only=read_only,
-                    description=description, deleted=deleted)
+        return GoogleCalendar(uid=uid, name=name, read_only=read_only,
+                              description=description, deleted=deleted)
 
-    def get_events(self, calendar_uid, sync_from_time=None,
-                   page_token=None, max_results=2500):
+    def get_events(self, **kwargs):
         """
         Fetch the events for an individual calendar.
 
@@ -140,11 +145,18 @@ class GoogleEventsProvider(BaseSyncProvider):
                 random-alphanumeric-address@google.com
 
         """
+        calendar_uid = kwargs.get('calendar_uid')
+        assert calendar_uid is not None
+
+        sync_from_time = kwargs.get('sync_from_time')
+        max_results = kwargs.get('max_results', 2500)
+        # TODO[k]: Should we set singleEvents as well?
         show_deleted = True
-        events = []
+        page_token = None
 
         service = self._get_google_service()
 
+        events = []
         while True:
             event_list = service.events().list(
                 calendarId=calendar_uid,
@@ -194,30 +206,33 @@ class GoogleEventsProvider(BaseSyncProvider):
             _end = event['end']
             end = _parse_start_end(_start)
 
-            all_day = True if (_start.get('date') and _end.get('date')) else \
-                False
+            all_day = (_start.get('date') and _end.get('date'))
 
-            description = event.get('description', None)
-            location = event.get('location', None)
+            description = event.get('description')
+            location = event.get('location')
 
             # Ownership, read_only information
-            creator = event.get('creator', None)
+            creator = event.get('creator')
 
             owner = u'{} <{}>'.format(
                 creator.get('displayName', ''), creator.get('email', '')) if \
                 creator else ''
 
-            is_owner = True if (creator and creator.get('self')) else False
-            read_only = False if (is_owner or event.get('guestsCanModify')) \
-                else True
+            is_owner = (creator and creator.get('self'))
+            read_only = True
+            if is_owner or event.get('guestsCanModify'):
+                read_only = False
 
             participants = event.get('attendees', [])
+
+            # TODO[k]: If singleEvents set above, this is a little more
+            # complicated.
+            deleted = (event.get('status') == 'cancelled')
 
         except (KeyError, AttributeError):
             raise MalformedEventError()
 
-        return GoogleEvent(namespace_id=self.namespace_id,
-                           uid=uid,
+        return GoogleEvent(uid=uid,
                            raw_data=raw_data,
                            title=title,
                            description=description,
@@ -227,7 +242,8 @@ class GoogleEventsProvider(BaseSyncProvider):
                            all_day=all_day,
                            owner=owner,
                            read_only=read_only,
-                           participants=participants)
+                           participants=participants,
+                           deleted=deleted)
 
     def dump_event(self, event):
         """Convert an event db object to the Google API JSON format."""

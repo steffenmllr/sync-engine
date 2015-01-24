@@ -54,30 +54,6 @@ def test_update_contact(contacts_provider, contact_sync, db):
     assert 'new@email.address' in email_addresses
 
 
-def test_multiple_remotes(contacts_provider, alternate_contacts_provider,
-                          contact_sync, db):
-    contacts_provider.supply_contact('Name', 'name@email.address')
-    alternate_contacts_provider.supply_contact('Alternate Name',
-                                               'name@email.address')
-
-    contact_sync.provider_instance = contacts_provider
-    contact_sync.poll()
-
-    contact_sync.provider_instance = alternate_contacts_provider
-    contact_sync.poll()
-
-    result = db.session.query(Contact). \
-        filter_by(namespace_id=NAMESPACE_ID,
-                  provider_name='test_provider').one()
-    alternate_result = db.session.query(Contact). \
-        filter_by(namespace_id=NAMESPACE_ID,
-                  provider_name='alternate_provider').one()
-    # Check that both contacts were persisted, even though they have the same
-    # uid.
-    assert result.name == 'Name'
-    assert alternate_result.name == 'Alternate Name'
-
-
 def test_deletes(contacts_provider, contact_sync, db):
     num_original_contacts = db.session.query(Contact).count()
     contacts_provider.supply_contact('Name', 'name@email.address')

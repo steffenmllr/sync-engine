@@ -1,11 +1,7 @@
-from datetime import datetime
-from collections import Counter
-
 from inbox.log import get_logger
 logger = get_logger()
-from inbox.models.session import session_scope
-from inbox.models import Account, Calendar, Event
-from inbox.sync.base_sync import BaseSync
+from inbox.models import Calendar, Event
+from inbox.sync.base_sync import BaseSync, base_poll
 from inbox.events.google import GoogleEventsProvider
 from inbox.util.debug import bind_context
 
@@ -44,10 +40,6 @@ class EventSync(BaseSync):
     def provider(self):
         return __provider_map__[self.provider_name]
 
-    @property
-    def target_obj(self):
-        return Event
-
     def last_sync(self, account):
         return account.last_synced_events
 
@@ -55,128 +47,22 @@ class EventSync(BaseSync):
         account.last_synced_events = dt
 
     def poll(self):
-        return poll_events(
-            self.account_id, self.provider_instance, self.last_sync,
-            self.target_obj, self.set_last_sync, self.log)
+        calendar_ids = base_poll(self.account_id,
+                                 self.provider_instance.get_calendars,
+                                 Calendar,
+                                 self.last_sync,
+                                 self.set_last_sync,
+                                 self.log)
 
-
-def poll_events(account_id, provider_instance, last_sync_fn, target_obj,
-                set_last_sync_fn, log):
-    """
-    Query a remote provider for Calendar and Event adds, updates and deletes,
-    and persist them to the database.
-
-    Parameters
-    ----------
-    account_id: int
-        ID for the account whose items should be queried.
-    db_session: sqlalchemy.orm.session.Session
-        Database session
-    provider: Interface to the remote item data provider.
-        Must have a PROVIDER_NAME attribute and implement the get() method.
-
-    """
-    # Get a timestamp before polling, so that we don't subsequently miss remote
-    # updates that happen while the poll loop is executing.
-    sync_timestamp = datetime.utcnow()
-
-    with session_scope() as db_session:
-        account = db_session.query(Account).get(account_id)
-        last_sync = None
-        if last_sync_fn(account) is not None:
-            # Note explicit offset is required by e.g. Google calendar API.
-            last_sync = datetime.isoformat(last_sync_fn(account)) + 'Z'
-
-    calendars = provider_instance.get_calendars()
-    calendar_ids = _sync_calendars(account_id, calendars, log)
-
-    for (uid, id_) in calendar_ids:
-        events = provider_instance.get_events(uid, sync_from_time=last_sync)
-        _sync_events(account_id, id_, events, log)
-
-    with session_scope() as db_session:
-        set_last_sync_fn(account, sync_timestamp)
-        db_session.commit()
-
-
-def _sync_calendars(account_id, calendars, log):
-    ids_ = []
-
-    with session_scope() as db_session:
-        account = db_session.query(Account).get(account_id)
-        namespace_id = account.namespace.id
-
-        change_counter = Counter()
-        for c in calendars:
-            uid = c['uid']
-            assert uid is not None, 'Got remote item with null uid'
-
-            local = db_session.query(Calendar).filter(
-                Calendar.namespace == account.namespace,
-                Calendar.uid == uid).first()
-
-            if local is not None:
-                if c['deleted']:
-                    db_session.delete(local)
-                    change_counter['deleted'] += 1
-                else:
-                    local.update(db_session, c)
-                    change_counter['updated'] += 1
-            else:
-                local = Calendar(namespace_id=namespace_id,
-                                 uid=uid)
-                local.update(db_session, c)
-                db_session.add(local)
-                db_session.flush()
-                change_counter['added'] += 1
-
-            ids_.append((uid, local.id))
-
-        log.info('calendar sync',
-                 added=change_counter['added'],
-                 updated=change_counter['updated'],
-                 deleted=change_counter['deleted'])
-
-        db_session.commit()
-
-    return ids_
-
-
-def _sync_events(account_id, calendar_id, events, log):
-    with session_scope() as db_session:
-        account = db_session.query(Account).get(account_id)
-        namespace_id = account.namespace.id
-
-        change_counter = Counter()
-        for e in events:
-            uid = e.uid
-            assert uid is not None, 'Got remote item with null uid'
-
-            local = db_session.query(Event).filter(
-                Event.namespace == account.namespace,
-                Event.calendar_id == calendar_id,
-                Event.uid == uid).first()
-
-            if local is not None:
-                if e.deleted:
-                    db_session.delete(local)
-                    change_counter['deleted'] += 1
-                else:
-                    local.update(db_session, e)
-                    change_counter['updated'] += 1
-            else:
-                local = Event(namespace_id=namespace_id,
-                              calendar_id=calendar_id,
-                              uid=uid)
-                local.update(db_session, e)
-                db_session.add(local)
-                db_session.flush()
-                change_counter['added'] += 1
-
-            log.info('event sync',
-                     calendar_id=calendar_id,
-                     added=change_counter['added'],
-                     updated=change_counter['updated'],
-                     deleted=change_counter['deleted'])
-
-        db_session.commit()
+        for calendar_id in calendar_ids:
+            uid = calendar_id['uid']
+            id_ = calendar_id['id']
+            base_poll(self.account_id,
+                      self.provider_instance.get_events,
+                      Event,
+                      self.last_sync,
+                      self.set_last_sync,
+                      self.log,
+                      remote_args=dict(calendar_uid=uid),
+                      target_filters=[Event.calendar_id == id_],
+                      calendar_id=id_)
