@@ -46,50 +46,52 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
 
         query = query.join(tag_query)
 
-    if any((from_addr, to_addr, cc_addr, bcc_addr)):
-        contact_criteria = []
-        if from_addr is not None:
-            contact_criteria.append(and_(
+    if from_addr is not None:
+        from_query = db_session.query(Message.thread_id). \
+            join(MessageContactAssociation).join(Contact).filter(
                 Contact.email_address == from_addr,
                 Contact.namespace_id == namespace_id,
-                MessageContactAssociation.field == 'from_addr'))
+                MessageContactAssociation.field == 'from_addr').subquery()
+        query = query.filter(Thread.id.in_(from_query))
 
-        if to_addr is not None:
-            contact_criteria.append(and_(
+    if to_addr is not None:
+        to_query = db_session.query(Message.thread_id). \
+            join(MessageContactAssociation).join(Contact).filter(
                 Contact.email_address == to_addr,
                 Contact.namespace_id == namespace_id,
-                MessageContactAssociation.field == 'to_addr'))
+                MessageContactAssociation.field == 'to_addr').subquery()
+        query = query.filter(Thread.id.in_(to_query))
 
-        if cc_addr is not None:
-            contact_criteria.append(and_(
+    if cc_addr is not None:
+        cc_query = db_session.query(Message.thread_id). \
+            join(MessageContactAssociation).join(Contact).filter(
                 Contact.email_address == cc_addr,
                 Contact.namespace_id == namespace_id,
-                MessageContactAssociation.field == 'cc_addr'))
+                MessageContactAssociation.field == 'cc_addr').subquery()
+        query = query.filter(Thread.id.in_(cc_query))
 
-        if bcc_addr is not None:
-            contact_criteria.append(and_(
+    if bcc_addr is not None:
+        bcc_query = db_session.query(Message.thread_id). \
+            join(MessageContactAssociation).join(Contact).filter(
                 Contact.email_address == bcc_addr,
                 Contact.namespace_id == namespace_id,
-                MessageContactAssociation.field == 'bcc_addr'))
-
-        contact_query = db_session.query(Message). \
-            join(MessageContactAssociation).join(Contact). \
-            filter(or_(*contact_criteria)).subquery()
-
-        query = query.join(contact_query)
+                MessageContactAssociation.field == 'bcc_addr').subquery()
+        query = query.filter(Thread.id.in_(bcc_query))
 
     if any_email is not None:
-        any_contact_query = db_session.query(Message). \
+        any_contact_query = db_session.query(Message.thread_id). \
             join(MessageContactAssociation).join(Contact). \
             filter(Contact.email_address == any_email,
                    Contact.namespace_id == namespace_id).subquery()
-        query = query.join(any_contact_query)
+        query = query.filter(Thread.id.in_(any_contact_query))
 
     if filename is not None:
-        files_query = db_session.query(Message). \
+        files_query = db_session.query(Message.thread_id). \
             join(Part).join(Block). \
-            filter(Block.filename == filename). \
+            filter(Block.filename == filename,
+                   Block.namespace_id == namespace_id). \
             subquery()
+        query = query.filter(Thread.id.in_(files_query))
         query = query.join(files_query)
 
     if view == 'count':
@@ -105,7 +107,7 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
             subqueryload('tagitems').joinedload('tag').
             load_only('public_id', 'name'))
 
-    query = query.order_by(desc(Thread.recentdate)).distinct().limit(limit)
+    query = query.order_by(desc(Thread.recentdate)).limit(limit)
     if offset:
         query = query.offset(offset)
 
