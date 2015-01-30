@@ -24,7 +24,6 @@ from inbox.sync.base_sync_provider import BaseSyncProvider
 from inbox.log import get_logger
 logger = get_logger()
 
-
 SOURCE_APP_NAME = 'InboxApp Calendar Sync Engine'
 
 GoogleCalendar = namedtuple(
@@ -35,6 +34,10 @@ GoogleEvent = namedtuple(
     'GoogleEvent',
     'uid raw_data title start end all_day description location '
     'owner read_only participants deleted')
+
+# A mapping from Google's statuses to our own
+participant_status_map = {'accepted': 'yes', 'needsAction': 'noreply',
+                          'declined': 'no', 'tentative': 'maybe'}
 
 
 class GoogleEventsProvider(BaseSyncProvider):
@@ -245,7 +248,7 @@ class GoogleEventsProvider(BaseSyncProvider):
                            participants=participants,
                            deleted=deleted)
 
-    def dump_event(self, event):
+    def jsonify_event(self, event):
         """Convert an event database object to the Google API JSON format."""
         dump = {}
 
@@ -269,23 +272,24 @@ class GoogleEventsProvider(BaseSyncProvider):
         return dump
 
     def _create_attendee(self, participant):
-        inv_status_map = {value: key for key, value in
-                          GoogleEventsProvider.status_map.iteritems()}
+        # We can do this because the values are unique too.
+        reverse_map = dict((v, k) for k, v in
+                           participant_status_map.iteritems())
 
-        att = {}
+        attendee = {}
         if 'name' in participant:
-            att["displayName"] = participant['name']
+            attendee["displayName"] = participant['name']
 
             if 'status' in participant:
-                att["responseStatus"] = inv_status_map[participant['status']]
+                attendee["responseStatus"] = reverse_map[participant['status']]
 
             if 'email_address' in participant:
-                att["email"] = participant['email_address']
+                attendee["email"] = participant['email_address']
 
             if 'guests' in participant:
-                att["additionalGuests"] = participant['guests']
+                attendee["additionalGuests"] = participant['guests']
 
-        return att
+        return attendee
 
 
 def _parse_start_end(field):
@@ -297,14 +301,10 @@ def _parse_start_end(field):
 
 
 def _parse_attendees(attendees):
-    # A mapping from Google's statuses to our own
-    status_map = {'accepted': 'yes', 'needsAction': 'noreply',
-                  'declined': 'no', 'tentative': 'maybe'}
-
     participants = []
 
     for attendee in attendees:
-        status = status_map.get(attendee.get['responseStatus'])
+        status = participant_status_map.get(attendee.get['responseStatus'])
 
         p = dict(email_address=attendee.get('email'),
                  name=attendee.get('displayName'),

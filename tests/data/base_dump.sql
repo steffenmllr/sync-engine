@@ -153,6 +153,7 @@ CREATE TABLE `alembic_version` (
 
 LOCK TABLES `alembic_version` WRITE;
 /*!40000 ALTER TABLE `alembic_version` DISABLE KEYS */;
+<<<<<<< Updated upstream
 <<<<<<< HEAD
 <<<<<<< HEAD
 INSERT INTO `alembic_version` VALUES ('5349c1a03fde');
@@ -162,6 +163,9 @@ INSERT INTO `alembic_version` VALUES ('2cebc0aec8e9');
 =======
 INSERT INTO `alembic_version` VALUES ('2341261602c3');
 >>>>>>> Last bit refactored.
+=======
+INSERT INTO `alembic_version` VALUES ('2cebc0aec8e9');
+>>>>>>> Stashed changes
 /*!40000 ALTER TABLE `alembic_version` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -223,7 +227,6 @@ CREATE TABLE `calendar` (
   `read_only` tinyint(1) NOT NULL,
   `namespace_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uuid` (`uid`,`namespace_id`),
   KEY `calendar_ibfk_2` (`namespace_id`),
   CONSTRAINT `calendar_ibfk_2` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4;
@@ -235,7 +238,7 @@ CREATE TABLE `calendar` (
 
 LOCK TABLES `calendar` WRITE;
 /*!40000 ALTER TABLE `calendar` DISABLE KEYS */;
-INSERT INTO `calendar` VALUES (1,'ÔøΩ5ÔøΩÔøΩÔøΩF\0','default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,1),(2,'ÔøΩ5ÔøΩÔøΩÔøΩF\0','provider_default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu9',1,1),(3,'ÔøΩ5ÔøΩÔøΩÔøΩF\0','default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu7',0,NULL);
+INSERT INTO `calendar` VALUES (1,'œ5ˆê¨F\0ªÌ´Åûˆ√¿','default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,1),(2,'œ5ˆê¨F\0ª3´Åûˆ√¿','provider_default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',1,1),(3,'œ5ˆê¨F\0ª5´Åûˆ√¿','default',NULL,NULL,NULL,NULL,'167wjlgf89za2cdhy17p9bsu8',0,NULL);
 /*!40000 ALTER TABLE `calendar` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -576,7 +579,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','p5ÔøΩÔøΩÔøΩ\rD_Ôø','','desc1','data1','InboxHeadquarters','1970-01-01 00:00:01','1970-02-01 00:00:01',0,'2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,0,1,'{}'),(2,'b9f18495985f4814a95e28f3e119a730','◊éÔøΩv‘êAÔøΩÔøΩ','','desc2','data2','InboxHeadquarters','1970-01-01 00:00:01','1970-01-01 00:00:01',0,'2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1,'{}'),(3,'c9f18495985f4814a95e28f3e119a730','◊éÔøΩv‘êAÔøΩjFc','','desc5','data3','InboxHeadquarters','1970-02-01 00:00:01','1970-03-01 00:00:01',0,'2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1,'{}');
+INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','p5ßë‹\rD_∂Î ä@Ø◊˝','','desc1','data1','InboxHeadquarters','1970-01-01 00:00:01','1970-02-01 00:00:01',0,'2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,0,1,'{}'),(2,'b9f18495985f4814a95e28f3e119a730','◊éÌv‘êAπ‡FcÕVø\n','','desc2','data2','InboxHeadquarters','1970-01-01 00:00:01','1970-01-01 00:00:01',0,'2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1,'{}'),(3,'c9f18495985f4814a95e28f3e119a730','◊éÌv‘êAπjFcÕVø\n','','desc5','data3','InboxHeadquarters','1970-02-01 00:00:01','1970-03-01 00:00:01',0,'2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1,'{}');
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1748,6 +1751,7 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
+<<<<<<< Updated upstream
 <<<<<<< HEAD
 <<<<<<< HEAD
 -- Dump completed on 2015-01-26 10:18:42
@@ -1757,3 +1761,6 @@ UNLOCK TABLES;
 =======
 -- Dump completed on 2015-01-25  0:07:27
 >>>>>>> Last bit refactored.
+=======
+-- Dump completed on 2015-01-25  3:24:31
+>>>>>>> Stashed changes
