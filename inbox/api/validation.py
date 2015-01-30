@@ -1,9 +1,12 @@
 """Utilities for validating user input to the API."""
 from datetime import datetime
+
 from flanker.addresslib import address
 from flask.ext.restful import reqparse
 from sqlalchemy.orm.exc import NoResultFound
-from inbox.models import Account, Calendar, Tag, Thread, Block, Message
+from sqlalchemy.orm import subqueryload
+
+from inbox.models import Event, Calendar, Tag, Thread, Block, Message
 from inbox.models.when import parse_as_when
 from inbox.api.err import InputError, NotFoundError, ConflictError
 
@@ -178,62 +181,72 @@ def get_recipients(recipients, field, validate_emails=False):
 
 
 def get_calendar(calendar_public_id, namespace, db_session):
-    if calendar_public_id is None:
-        account = db_session.query(Account).filter(
-            Account.id == namespace.account_id).one()
-        return account.default_calendar
-    valid_public_id(calendar_public_id)
     try:
-        return db_session.query(Calendar). \
-            filter(Calendar.public_id == calendar_public_id,
-                   Calendar.namespace_id == namespace.id).one()
+        return db_session.query(Calendar).filter(
+            Calendar.public_id == calendar_public_id,
+            Calendar.namespace_id == namespace.id).one()
     except NoResultFound:
         raise NotFoundError('Calendar {} not found'.format(calendar_public_id))
 
 
-def valid_when(when):
+def valid_calendar(calendar_public_id, namespace, db_session, writable=True):
+    valid_public_id(calendar_public_id)
+
+    calendar = db_session.query(Calendar).filter(
+        Calendar.public_id == calendar_public_id,
+        Calendar.namespace_id == namespace.id).first()
+
+    if not calendar:
+        raise NotFoundError('Calendar {} not found'.format(calendar_public_id))
+
+    if writable and calendar.read_only:
+        raise InputError("Can't perform operation on read_only calendar")
+
+
+def _valid_when(when, require_when):
+    if require_when and not when:
+        raise InputError('Event does not specify `when`')
+
+    if not when:
+        return
+
     try:
         parse_as_when(when)
     except ValueError as e:
         raise InputError(str(e))
 
 
-def valid_event(event):
-    if 'when' not in event:
-        raise InputError("Must specify 'when' when creating an event.")
-
-    valid_when(event['when'])
-
-    participants = event.get('participants', [])
+def _valid_participants(participants):
     for p in participants:
-        if 'email' not in p:
-            raise InputError("'participants' must must have email")
-        if 'status' in p:
-            if p['status'] not in ('yes', 'no', 'maybe', 'noreply'):
-                raise InputError("'participants' status must be one of: "
-                                 "yes, no, maybe, noreply")
+        if p.get('email') is None:
+            raise InputError('Missing email for a participant')
+
+        status = p.get('status')
+        if status and status not in ['yes', 'no', 'maybe', 'noreply']:
+            raise InputError('Invalid status for a participant')
 
 
-def valid_event_update(event, namespace, db_session):
-    if 'when' in event:
-        valid_when(event['when'])
+def valid_event(event, namespace, db_session, require_when=True):
+    _valid_when(event.get('when'), require_when)
+    _valid_participants(event.get('participants', []))
 
-    if 'busy' in event and not isinstance(event.get('busy'), bool):
-        raise InputError('\'busy\' must be true or false')
 
-    calendar = get_calendar(event.get('calendar_id'),
-                            namespace, db_session)
-    if calendar and calendar.read_only:
-        raise InputError("Cannot move event to read_only calendar.")
+def valid_event_update(event_public_id, namespace, db_session,
+                       writeable_event=True):
+    try:
+        event = db_session.query(Event).filter(
+                Event.public_id == event_public_id,
+                Event.namespace_id == namespace.id).options(
+                subqueryload(Event.calendar)).one()
 
-    participants = event.get('participants', [])
-    for p in participants:
-        if 'email' not in p:
-            raise InputError("'participants' must have email")
-        if 'status' in p:
-            if p['status'] not in ('yes', 'no', 'maybe', 'noreply'):
-                raise InputError("'participants' status must be one of: "
-                                 "yes, no, maybe, noreply")
+    except NoResultFound:
+        raise NotFoundError('Event {} not found'.format(event_public_id))
+
+    if event.calendar.read_only:
+        raise InputError('Cannot perform operation on read_only calendar')
+
+    if writeable_event and event.read_only:
+        raise InputError('Cannot update read_only event.')
 
 
 def valid_event_action(action):
@@ -259,8 +272,11 @@ def valid_delta_object_types(types_arg):
 
 
 def validate_draft_recipients(draft):
-    """Check that all recipient emails are at least plausible email
-    addresses, before we try to send a draft."""
+    """
+    Check that all recipient emails are at least plausible email
+    addresses, before we try to send a draft.
+
+    """
     for field in draft.to_addr, draft.bcc_addr, draft.cc_addr:
         if field is not None:
             for _, email_address in field:

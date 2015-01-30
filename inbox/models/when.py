@@ -3,12 +3,14 @@ from dateutil.parser import parse as date_parse
 
 
 def parse_as_when(raw):
-    """Tries to parse a dictionary into a corresponding Date, DateSpan,
-    Time, or TimeSpan instance.
+    """
+    Tries to parse a dictionary into a corresponding Date, DateSpan, Time, or
+    TimeSpan instance.
 
     Raises
     -------
     ValueError
+
     """
     keys_for_type = {
         ('start_time', 'end_time'): TimeSpan,
@@ -16,10 +18,12 @@ def parse_as_when(raw):
         ('start_date', 'end_date'): DateSpan,
         ('date', ): Date
     }
+
     given_keys = tuple(set(raw.keys()) - set('object'))
     when_type = keys_for_type.get(given_keys)
     if when_type is None:
-        raise ValueError("When object had invalid keys.")
+        raise ValueError('When object had invalid keys.')
+
     return when_type.parse(raw)
 
 

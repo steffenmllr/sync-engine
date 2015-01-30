@@ -8,23 +8,21 @@ import uuid
 from sqlalchemy.orm import subqueryload
 
 from inbox.models import Event, Calendar
-from inbox.api.err import InputError
 
 
 def create(namespace, db_session, calendar, title, description, location,
            reminders, recurrence, when, participants):
-    event = Event(
-        namespace=namespace,
-        calendar=calendar,
-        uid=uuid.uuid4().hex,
-        raw_data='',
-        title=title,
-        description=description,
-        location=location,
-        when=when,
-        read_only=False,
-        is_owner=True,
-        participants={})
+    event = Event(namespace=namespace,
+                  calendar=calendar,
+                  uid=uuid.uuid4().hex,
+                  raw_data='',
+                  title=title,
+                  description=description,
+                  location=location,
+                  when=when,
+                  read_only=False,
+                  is_owner=True,
+                  participants={})
 
     event.participant_list = participants
 
@@ -43,13 +41,7 @@ def read(namespace, db_session, event_public_id):
 def update(namespace, db_session, event_public_id, update_attrs):
     event = db_session.query(Event).filter(
         Event.namespace_id == namespace.id,
-        Event.public_id == event_public_id).first()
-
-    if not event:
-        return event
-
-    if event.read_only:
-        raise InputError('Cannot update read_only event.')
+        Event.public_id == event_public_id).one()
 
     # Translate the calendar public_id to internal id
     calendar_public_id = update_attrs.get('calendar_id')
@@ -109,15 +101,9 @@ def read_calendar(namespace, db_session, calendar_public_id):
 
 
 def update_calendar(namespace, db_session, calendar_public_id, update_attrs):
-    eager = subqueryload(Calendar.events)
     calendar = db_session.query(Calendar).filter(
         Calendar.namespace_id == namespace.id,
-        Calendar.public_id == calendar_public_id). \
-        options(eager). \
-        first()
-
-    if not calendar:
-        return calendar
+        Calendar.public_id == calendar_public_id).one()
 
     for attr in update_attrs:
         if attr in ['name', 'description']:

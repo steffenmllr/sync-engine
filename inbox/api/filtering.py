@@ -333,14 +333,11 @@ def events(namespace_id, event_public_id, calendar_public_id, title,
         query = query.filter(Event.title.like('%{}%'.format(title)))
 
     if description is not None:
-        query = query.filter(Event.description.like('%{}%'
-                                                    .format(description)))
+        query = query.filter(
+            Event.description.like('%{}%'.format(description)))
 
     if location is not None:
         query = query.filter(Event.location.like('%{}%'.format(location)))
-
-    if source is not None:
-        query = query.filter(Event.source == source)
 
     if view == 'count':
         return {"count": query.one()[0]}
