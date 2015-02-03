@@ -177,7 +177,7 @@ def patch_network_functions(monkeypatch):
 
     """
     import inbox.actions
-    for backend in inbox.actions.module_registry.values():
+    for backend in inbox.actions.backends.module_registry.values():
         for method_name in backend.__all__:
             monkeypatch.setattr(backend.__name__ + '.' + method_name,
                                 lambda *args, **kwargs: None)

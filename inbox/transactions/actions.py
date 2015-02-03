@@ -20,10 +20,10 @@ from inbox.models import ActionLog, Namespace
 from inbox.sqlalchemy_ext.util import safer_yield_per
 from inbox.util.file import Lock
 from inbox.util.misc import ProviderSpecificException
-from inbox.actions import (mark_read, mark_unread, archive, unarchive, star,
-                           unstar, save_draft, delete_draft, mark_spam,
-                           unmark_spam, mark_trash, unmark_trash,
-                           save_sent_email)
+from inbox.actions.base import (mark_read, mark_unread, archive, unarchive,
+                                star, unstar, save_draft, delete_draft,
+                                mark_spam, unmark_spam, mark_trash,
+                                unmark_trash, save_sent_email)
 from inbox.events.actions import (create_event, delete_event, update_event)
 
 # Global lock to ensure that only one instance of the syncback service is

@@ -18,6 +18,7 @@ from gevent.coros import BoundedSemaphore
 
 import geventconnpool
 
+from inbox.auth.base import handler_from_provider
 from inbox.util.concurrency import retry
 from inbox.util.itert import chunk
 from inbox.util.misc import or_none, timed
@@ -172,8 +173,6 @@ class CrispinConnectionPool(geventconnpool.ConnectionPool):
                 self.credential = account.password
 
     def _new_connection(self):
-        from inbox.auth import handler_from_provider
-
         # Ensure that connections are initialized serially, so as not to use
         # many db sessions on startup.
         with self._new_conn_lock as _:
