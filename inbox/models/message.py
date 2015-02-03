@@ -137,11 +137,13 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     # The uid as set in the X-INBOX-ID header of a sent message we create
     inbox_uid = Column(String(64), nullable=True, index=True)
 
+    def regen_inbox_uid(self):
+        self.inbox_uid = '{}-{}'.format(self.public_id, self.version)
+
     # In accordance with JWZ (http://www.jwz.org/doc/threading.html)
     references = Column(JSON, nullable=True)
 
-    # Only used on drafts
-    version = Column(Base36UID, nullable=True, default=generate_public_id)
+    version = Column(Integer, nullable=False, server_default='0')
 
     def mark_for_deletion(self):
         """Mark this message to be deleted by an asynchronous delete

@@ -32,6 +32,7 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
     subjectdate = Column(DateTime, nullable=False, index=True)
     recentdate = Column(DateTime, nullable=False, index=True)
     snippet = Column(String(191), nullable=True, default='')
+    version = Column(Integer, nullable=True, server_default='0')
 
     folders = association_proxy(
         'folderitems', 'folder',
