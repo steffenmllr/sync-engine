@@ -108,18 +108,25 @@ def retry_with_logging(func, logger=None, retry_classes=None,
 
 def retry_and_report_killed(func, account_id, folder_name=None, logger=None,
                             retry_classes=None, fail_classes=None,
+                            exc_callback=None, fail_callback=None,
                             **reset_params):
-    exc_callback = lambda: log_uncaught_errors(logger=logger,
-                                               account_id=account_id)
-    fail_callback = lambda: report_killed(account_id, folder_name)
-    return retry(func, exc_callback=exc_callback,
-                 fail_callback=fail_callback, retry_classes=retry_classes,
-                 fail_classes=fail_classes, **reset_params)()
+    if not exc_callback:
+        exc_callback = lambda: log_uncaught_errors(logger=logger,
+                                                   account_id=account_id)
+    if not fail_callback:
+        fail_callback = lambda: report_killed(account_id, folder_name)
+
+    return retry(func, exc_callback=exc_callback, fail_callback=fail_callback,
+                 retry_classes=retry_classes, fail_classes=fail_classes,
+                 **reset_params)()
 
 
 def print_dots():
-    """This Greenlet prints dots to the console which is useful for making
-    sure that other greenlets are properly not blocking."""
+    """
+    This Greenlet prints dots to the console which is useful for making
+    sure that other greenlets are properly not blocking.
+
+    """
     def m():
         while True:
             sys.stdout.write("."),
