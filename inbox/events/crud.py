@@ -11,6 +11,21 @@ from inbox.api.err import InputError
 
 INBOX_PROVIDER_NAME = 'inbox'
 
+def _convert_participants(participants_list):
+    """Convert participants from the format we receive from the API
+    to our internal storage format. Mostly, some fields have different
+    names."""
+    ret = []
+
+    for participant in participants_list:
+        dct =  {"name": participant.get('name'),
+                "email_address": participant.get('email'),
+                "notes": participant.get('notes'),
+                "status": participant.get('status')}
+
+        ret.append(dct)
+
+    return ret
 
 def create(namespace, db_session, calendar, title, description, location,
            reminders, recurrence, when, participants):
@@ -26,10 +41,8 @@ def create(namespace, db_session, calendar, title, description, location,
         when=when,
         read_only=False,
         is_owner=True,
-        participants={},
+        participants=_convert_participants(participants),
         source='local')
-
-    event.participant_list = participants
 
     db_session.add(event)
     db_session.commit()
@@ -75,7 +88,7 @@ def update(namespace, db_session, event_public_id, update_dict):
         update_dict['calendar_id'] = new_cal.id
 
     for attr in ['title', 'description', 'location', 'reminders', 'recurrence',
-                 'when', 'participant_list', 'calendar_id']:
+                 'when', 'participants', 'calendar_id']:
         if attr in update_dict:
             setattr(event, attr, update_dict[attr])
 

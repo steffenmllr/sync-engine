@@ -182,24 +182,23 @@ class GoogleEventsProvider(BaseEventProvider):
                     raise MalformedEventError()
                 status = GoogleEventsProvider.status_map[g_status]
 
+                dct = {}
                 email = attendee.get('email')
-                if not email:
-                    raise MalformedEventError()
+                if email:
+                    dct['email_address'] = email
 
                 name = attendee.get('displayName')
+                if name:
+                    dct['name'] = name
 
                 notes = None
                 guests = 0
                 if 'additionalGuests' in attendee:
-                    guests = attendee['additionalGuests']
+                    dct['guests'] = attendee['additionalGuests']
                 elif 'comment' in attendee:
-                    notes = attendee['comment']
+                    dct['notes'] = attendee['comment']
 
-                participants.append({'email_address': email,
-                                     'name': name,
-                                     'status': status,
-                                     'notes': notes,
-                                     'guests': guests})
+                participants.append(dct)
 
             if 'guestsCanModify' in event:
                 read_only = False
