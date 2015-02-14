@@ -97,7 +97,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         for email in remote_hash:
             participants_hash[email] = remote_hash[email]
 
-        for email in participants_hash:
+        for email in participants_hash.keys():
             if email not in remote_hash:
                 del participants_hash[email]
 

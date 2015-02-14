@@ -59,7 +59,6 @@ def test_api_create_status_yes(db, api_client):
 
     assert len(e_resp_data['participants']) == 1
     participant = e_resp_data['participants'][0]
-    assert participant['name'] is None
     assert participant['email'] == e_data['participants'][0]['email']
     assert participant['status'] == 'yes'
 
@@ -89,9 +88,7 @@ def test_api_create_multiple(db, api_client):
 
     participant0 = e_resp_data['participants'][0]
     participant1 = e_resp_data['participants'][1]
-    assert participant0['name'] is None
     assert participant0['status'] == 'noreply'
-    assert participant1['name'] is None
     assert participant1['status'] == 'noreply'
 
 
@@ -113,7 +110,7 @@ def test_api_create_status_no(db, api_client):
 
     assert len(e_resp_data['participants']) == 1
     participant = e_resp_data['participants'][0]
-    assert participant['name'] is None
+    assert 'name' not in participant
     assert participant['email'] == e_data['participants'][0]['email']
     assert participant['status'] == e_data['participants'][0]['status']
 
@@ -136,7 +133,7 @@ def test_api_create_status_maybe(db, api_client):
 
     assert len(e_resp_data['participants']) == 1
     participant = e_resp_data['participants'][0]
-    assert participant['name'] is None
+    assert 'name' not in participant
     assert participant['email'] == e_data['participants'][0]['email']
     assert participant['status'] == e_data['participants'][0]['status']
 
@@ -159,7 +156,7 @@ def test_api_create_status_noreply(db, api_client):
 
     assert len(e_resp_data['participants']) == 1
     participant = e_resp_data['participants'][0]
-    assert participant['name'] is None
+    assert 'name' not in participant
     assert participant['email'] == e_data['participants'][0]['email']
     assert participant['status'] == e_data['participants'][0]['status']
 
@@ -181,7 +178,7 @@ def test_api_create_no_name(db, api_client):
 
     assert len(e_resp_data['participants']) == 1
     participant = e_resp_data['participants'][0]
-    assert participant['name'] is None
+    assert 'name' not in participant
     assert participant['email'] == e_data['participants'][0]['email']
     assert participant['status'] == 'noreply'
 
@@ -245,7 +242,7 @@ def test_api_add_participant(db, api_client):
         res = [e for e in e_resp_data['participants']
                if e['email'] == p['email']]
         assert len(res) == 1
-        assert res[0]['name'] is None
+        assert 'name' not in res[0]
 
     event_id = e_resp_data['id']
     e_data['participants'].append({'email': 'filet.minyon@example.com'})
@@ -257,7 +254,7 @@ def test_api_add_participant(db, api_client):
         res = [e for e in e_resp_data['participants']
                if e['email'] == p['email']]
         assert len(res) == 1
-        assert res[0]['name'] is None
+        assert 'name' not in res[0]
 
 
 def test_api_remove_participant(db, api_client):
@@ -281,7 +278,7 @@ def test_api_remove_participant(db, api_client):
         res = [e for e in e_resp_data['participants']
                if e['email'] == p['email']]
         assert len(res) == 1
-        assert res[0]['name'] is None
+        assert 'name' not in res[0]
 
     event_id = e_resp_data['id']
     e_data['participants'].pop()
@@ -292,7 +289,7 @@ def test_api_remove_participant(db, api_client):
         res = [e for e in e_resp_data['participants']
                if e['email'] == p['email']]
         assert len(res) == 1
-        assert p['name'] is None
+        assert 'name' not in p
 
 
 def test_api_update_participant_status(db, api_client):
@@ -315,7 +312,7 @@ def test_api_update_participant_status(db, api_client):
     for i, p in enumerate(e_resp_data['participants']):
         res = [e for e in e_data['participants'] if e['email'] == p['email']]
         assert len(res) == 1
-        assert p['name'] is None
+        assert 'name' not in p
 
     event_id = e_resp_data['id']
 
@@ -341,7 +338,7 @@ def test_api_update_participant_status(db, api_client):
     for i, p in enumerate(e_resp_data['participants']):
         res = [e for e in e_data['participants'] if e['email'] == p['email']]
         assert len(res) == 1
-        assert p['name'] is None
+        assert 'name' not in p
 
 
 
