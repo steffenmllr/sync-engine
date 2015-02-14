@@ -12,7 +12,7 @@ down_revision = '39fa82d3168e'
 
 from alembic import op
 from inbox.models.session import session_scope
-from inbox.sqlalchemy_ext.util import JSON, safer_yield_per, MutableList
+from inbox.sqlalchemy_ext.util import JSON, BigJSON, safer_yield_per, MutableList
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import text
 from sqlalchemy import Column
@@ -23,7 +23,7 @@ import json
 
 
 def upgrade():
-    op.add_column('event', sa.Column('participants', JSON(),
+    op.add_column('event', sa.Column('participants', BigJSON(),
                                      nullable=True))
     conn = op.get_bind()
     conn.execute(text("UPDATE event SET participants = '[]'"))
@@ -41,7 +41,14 @@ def upgrade():
             l = []
             participants_hash = json.loads(event.participants_by_email)
             for participant in participants_hash:
-                l.append(participants_hash[participant])
+                dct = participants_hash[participant]
+
+                # Also rename 'email_address' to 'email'
+                if 'email_address' in dct:
+                    dct['email'] = 'email_address'
+                    del dct['email_address']
+
+                l.append(dct)
             event.participants = json.dumps(l)
 
         db_session.commit()
@@ -68,9 +75,12 @@ def downgrade():
             dct = {}
             participants_list = json.loads(event.participants)
             for participant in participants_list:
-                email = participant.get("email_address")
+                email = participant.get("email")
                 if email:
                     dct[email] = participant
+                    participant['email_address'] = participant['email']
+                    del participant['email']
+
             event.participants_by_email = json.dumps(dct)
 
         db_session.commit()

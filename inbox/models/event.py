@@ -1,13 +1,14 @@
 from datetime import datetime
 time_parse = datetime.utcfromtimestamp
 from dateutil.parser import parse as date_parse
+from copy import deepcopy
 
 from sqlalchemy import (Column, String, ForeignKey, Text, Boolean,
                         DateTime, Enum, UniqueConstraint)
 from sqlalchemy.orm import relationship, backref, validates
 
 from inbox.util.misc import merge_attr
-from inbox.sqlalchemy_ext.util import MAX_TEXT_LENGTH, JSON, MutableList
+from inbox.sqlalchemy_ext.util import MAX_TEXT_LENGTH, BigJSON, MutableList
 from inbox.models.base import MailSyncBase
 from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.calendar import Calendar
@@ -81,7 +82,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     __table_args__ = (UniqueConstraint('uid', 'source', 'namespace_id',
                                        'provider_name', name='uuid'),)
 
-    participants = Column(MutableList.as_mutable(JSON), default=[],
+    participants = Column(MutableList.as_mutable(BigJSON), default=[],
                           nullable=True)
 
     @validates('reminders', 'recurrence', 'owner', 'location', 'title', 'raw_data')
@@ -91,17 +92,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
 
     def merge_participants(self, base, remote):
         # Merge participants. Remote always take precedence.
-        remote_hash = {p["email"]: p for p in remote}
-        participants_hash = {p["email"]: p for p in self.participants}
-
-        for email in remote_hash:
-            participants_hash[email] = remote_hash[email]
-
-        for email in participants_hash.keys():
-            if email not in remote_hash:
-                del participants_hash[email]
-
-        self.participants = [participants_hash[p] for p in participants_hash]
+        self.participants = deepcopy(remote)
 
     def merge_from(self, base, remote):
         # This must be updated when new fields are added to the class.
