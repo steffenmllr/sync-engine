@@ -11,21 +11,6 @@ from inbox.api.err import InputError
 
 INBOX_PROVIDER_NAME = 'inbox'
 
-def _convert_participants(participants_list):
-    """Convert participants from the format we receive from the API
-    to our internal storage format. Mostly, some fields have different
-    names."""
-    ret = []
-
-    for participant in participants_list:
-        dct =  {"name": participant.get('name'),
-                "email_address": participant.get('email'),
-                "notes": participant.get('notes'),
-                "status": participant.get('status')}
-
-        ret.append(dct)
-
-    return ret
 
 def create(namespace, db_session, calendar, title, description, location,
            reminders, recurrence, when, participants):
@@ -41,7 +26,7 @@ def create(namespace, db_session, calendar, title, description, location,
         when=when,
         read_only=False,
         is_owner=True,
-        participants=_convert_participants(participants),
+        participants=participants,
         source='local')
 
     db_session.add(event)

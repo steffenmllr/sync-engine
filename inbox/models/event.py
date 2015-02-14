@@ -89,6 +89,31 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         max_len = _LENGTHS[key]
         return value if value is None else value[:max_len]
 
+    def merge_participants(self, base, remote):
+        # Merge participants. Remote always take precedence.
+        remote_hash = {p["email"]: p for p in remote}
+        participants_hash = {p["email"]: p for p in self.participants}
+
+        for email in remote_hash:
+            participants_hash[email] = remote_hash[email]
+
+        for email in participants_hash:
+            if email not in remote_hash:
+                del participants_hash[email]
+
+        self.participants = [participants_hash[p] for p in participants_hash]
+
+    def merge_from(self, base, remote):
+        # This must be updated when new fields are added to the class.
+        merge_attrs = ['title', 'description', 'start', 'end', 'all_day',
+                       'read_only', 'location', 'reminders', 'recurrence',
+                       'busy', 'raw_data', 'owner', 'is_owner', 'calendar_id']
+
+        for attr in merge_attrs:
+            merge_attr(base, remote, self, attr)
+
+        self.merge_participants(base.participants, remote.participants)
+
     def copy_from(self, src):
         """ Copy fields from src."""
         self.namespace_id = src.namespace_id
@@ -138,7 +163,3 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
             self.start = date_parse(when['start_date'])
             self.end = date_parse(when['end_date'])
             self.all_day = True
-
-    @property
-    def versioned_relationships(self):
-        return ['participants']

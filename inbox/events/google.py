@@ -185,7 +185,7 @@ class GoogleEventsProvider(BaseEventProvider):
                 dct = {}
                 email = attendee.get('email')
                 if email:
-                    dct['email_address'] = email
+                    dct['email'] = email
 
                 name = attendee.get('displayName')
                 if name:
@@ -245,8 +245,8 @@ class GoogleEventsProvider(BaseEventProvider):
             if 'status' in participant:
                 att["responseStatus"] = inv_status_map[participant['status']]
 
-            if 'email_address' in participant:
-                att["email"] = participant['email_address']
+            if 'email' in participant:
+                att["email"] = participant['email']
 
             if 'guests' in participant:
                 att["additionalGuests"] = participant['guests']
