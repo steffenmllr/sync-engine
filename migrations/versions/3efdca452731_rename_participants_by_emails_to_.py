@@ -50,8 +50,7 @@ def upgrade():
 
                 l.append(dct)
             event.participants = json.dumps(l)
-
-        db_session.commit()
+            db_session.flush()
 
     op.drop_column('event', 'participants_by_email')
 
@@ -82,7 +81,6 @@ def downgrade():
                     del participant['email']
 
             event.participants_by_email = json.dumps(dct)
-
-        db_session.commit()
+            db_session.flush()
 
     op.drop_column('event', 'participants')
