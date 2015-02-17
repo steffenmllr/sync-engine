@@ -37,7 +37,7 @@ def upgrade():
 
     with session_scope() as db_session:
         events = db_session.query(Event)
-        for event in events.yield_per(100):
+        for event in safer_yield_per(events, Event.id, 1, 100):
             l = []
             participants_hash = json.loads(event.participants_by_email)
             for participant in participants_hash:
@@ -70,7 +70,7 @@ def downgrade():
 
     with session_scope() as db_session:
         events = db_session.query(Event)
-        for event in events.yield_per(100):
+        for event in safer_yield_per(events, Event.id, 1, 100):
             dct = {}
             participants_list = json.loads(event.participants)
             for participant in participants_list:
