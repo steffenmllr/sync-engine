@@ -53,10 +53,10 @@ setup(
         # And include any *.msg files found in the 'hello' package, too:
         # 'hello': ['*.msg'],
     },
-    data_files=[(".", ["alembic.ini"]),
-                ("migrations", filter(os.path.isfile,
-                                      glob.glob("migrations/*"))),
-                ("migrations/versions",
+    data_files=[("inbox-sync-alembic", ["alembic.ini"]),
+                ("inbox-sync-alembic/migrations",
+                 filter(os.path.isfile, glob.glob("migrations/*"))),
+                ("inbox-sync-alembic/migrations/versions",
                  filter(os.path.isfile, glob.glob("migrations/versions/*")))
                 ],
 
