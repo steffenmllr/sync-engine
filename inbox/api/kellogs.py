@@ -138,6 +138,7 @@ def encode(obj, namespace_public_id=None):
             'participants': [_format_participant_data(participant)
                              for participant in obj.participants],
             'recurring': obj.recurring,
+            'occurrences': obj.get_occurrences(),
             'read_only': obj.read_only,
             'location': obj.location,
             'when': encode(obj.when)

@@ -1,6 +1,8 @@
 from datetime import datetime
 time_parse = datetime.utcfromtimestamp
 from dateutil.parser import parse as date_parse
+from dateutil import tz
+from dateutil.rrule import rrulestr, rruleset
 from copy import deepcopy
 import ast
 
@@ -28,6 +30,8 @@ _LENGTHS = {'location': LOCATION_MAX_LEN,
             'reminders': REMINDER_MAX_LEN,
             'title': TITLE_MAX_LEN,
             'raw_data': MAX_TEXT_LENGTH}
+# How far in the future to unfold recurring events
+FUTURE_RECURRENCE_YEARS = 3
 
 
 class Event(MailSyncBase, HasRevisions, HasPublicID):
@@ -167,3 +171,44 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
             # RRULE (required)
             # EXDATE (optional)
             return r
+
+    def get_occurrences(self, start=None, stop=None):
+        if self.recurrence:
+            if not start:
+                start = self.start
+            start = start.replace(tzinfo=tz.gettz('UTC'))
+
+            if not stop:
+                stop = datetime.utcnow()
+                # Check this works with Feb 29
+                stop = stop.replace(year=stop.year + FUTURE_RECURRENCE_YEARS)
+            stop = stop.replace(tzinfo=tz.gettz('UTC'))
+
+            r = ast.literal_eval(self.recurrence)
+            excl_dates = []
+            for item in r:
+                # Handle TZID in EXDATE (TODO: submit PR to python-dateutil)
+                if item.startswith('EXDATE') and 'TZID' in item:
+                    name, values = item.split(':', 1)
+                    for p in name.split(';'):
+                        if p.startswith('TZID'):
+                            tzinfo = tz.gettz(p[5:])
+                            for v in values.split(','):
+                                # convert to UTC-aware dates
+                                t = date_parse(v).replace(tzinfo=tzinfo)
+                                excl_dates.append(t)
+                    r.remove(item)
+
+            s = "\n".join(r)
+            instances = rrulestr(s, dtstart=start, compatible=True)
+            # TODO: deal with weird things here that don't parse.
+
+            if len(excl_dates) > 0:
+                if not isinstance(instances, rruleset):
+                    instances = rruleset().rrule(instances)
+                # Manually exclude the EXDATE dates.
+                map(instances.exdate, excl_dates)
+
+            return instances.between(start, stop)
+
+        return [self.start]
