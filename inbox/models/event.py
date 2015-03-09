@@ -2,6 +2,7 @@ from datetime import datetime
 time_parse = datetime.utcfromtimestamp
 from dateutil.parser import parse as date_parse
 from copy import deepcopy
+import ast
 
 from sqlalchemy import (Column, String, ForeignKey, Text, Boolean,
                         DateTime, Enum, UniqueConstraint, Index)
@@ -157,3 +158,12 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
             self.start = date_parse(when['start_date'])
             self.end = date_parse(when['end_date'])
             self.all_day = True
+
+    @property
+    def recurring(self):
+        if self.recurrence:
+            r = ast.literal_eval(self.recurrence)
+            # this can be a list containing at least 1 item:
+            # RRULE (required)
+            # EXDATE (optional)
+            return r
