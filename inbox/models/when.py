@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.parser import parse as date_parse
 
 
@@ -39,6 +39,10 @@ class Time(When):
     def __init__(self, time):
         self.time = time
 
+    @property
+    def delta(self):
+        return timedelta(minutes=0)
+
 
 class TimeSpan(When):
     @classmethod
@@ -56,6 +60,10 @@ class TimeSpan(When):
         self.start_time = start
         self.end_time = end
 
+    @property
+    def delta(self):
+        return self.end_time - self.start_time
+
 
 class Date(When):
     @classmethod
@@ -68,6 +76,10 @@ class Date(When):
 
     def __init__(self, date):
         self.date = date
+
+    @property
+    def delta(self):
+        return timedelta(days=0)
 
 
 class DateSpan(When):
@@ -85,3 +97,7 @@ class DateSpan(When):
     def __init__(self, start, end):
         self.start_date = start
         self.end_date = end
+
+    @property
+    def delta(self):
+        return self.end_date - self.start_date

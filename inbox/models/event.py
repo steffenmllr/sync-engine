@@ -183,6 +183,9 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
                 # Check this works with Feb 29
                 stop = stop.replace(year=stop.year + FUTURE_RECURRENCE_YEARS)
             stop = stop.replace(tzinfo=tz.gettz('UTC'))
+    @property
+    def length(self):
+        return self.when.delta
 
             r = ast.literal_eval(self.recurrence)
             excl_dates = []
