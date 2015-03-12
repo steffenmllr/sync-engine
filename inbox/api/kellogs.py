@@ -130,15 +130,14 @@ def encode(obj, namespace_public_id=None):
     elif isinstance(obj, Event):
         return {
             'id': obj.public_id,
-            'object': 'event',
+            'object': obj.API_OBJECT_NAME,
             'namespace_id': _get_namespace_public_id(obj),
             'calendar_id': obj.calendar.public_id if obj.calendar else None,
             'title': obj.title,
             'description': obj.description,
             'participants': [_format_participant_data(participant)
                              for participant in obj.participants],
-            'recurring': obj.recurring,
-            'occurrences': obj.get_occurrences(),
+            'recurring': obj.is_recurring,  #TODO RRULE
             'read_only': obj.read_only,
             'location': obj.location,
             'when': encode(obj.when)

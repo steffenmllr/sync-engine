@@ -73,7 +73,7 @@ class EventSync(BaseSyncMonitor):
 
         with session_scope() as db_session:
             account = db_session.query(Account).get(self.account_id)
-            last_sync_dt = account.last_synced_contacts
+            last_sync_dt = account.last_synced_events
 
             all_events = self.provider.get_items(sync_from_dt=last_sync_dt)
 

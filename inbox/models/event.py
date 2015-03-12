@@ -1,13 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 time_parse = datetime.utcfromtimestamp
 from dateutil.parser import parse as date_parse
-from dateutil import tz
-from dateutil.rrule import rrulestr, rruleset
 from copy import deepcopy
 import ast
 
-from sqlalchemy import (Column, String, ForeignKey, Text, Boolean,
-                        DateTime, Enum, UniqueConstraint, Index)
+from sqlalchemy import (Column, String, ForeignKey, Text, Boolean, Integer,
+                        DateTime, Enum, UniqueConstraint, Index, event)
 from sqlalchemy.orm import relationship, backref, validates
 
 from inbox.util.misc import merge_attr
@@ -17,7 +15,8 @@ from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.calendar import Calendar
 from inbox.models.namespace import Namespace
 from inbox.models.when import Time, TimeSpan, Date, DateSpan
-
+from inbox.log import get_logger
+log = get_logger()
 
 TITLE_MAX_LEN = 1024
 LOCATION_MAX_LEN = 255
@@ -30,8 +29,6 @@ _LENGTHS = {'location': LOCATION_MAX_LEN,
             'reminders': REMINDER_MAX_LEN,
             'title': TITLE_MAX_LEN,
             'raw_data': MAX_TEXT_LENGTH}
-# How far in the future to unfold recurring events
-FUTURE_RECURRENCE_YEARS = 3
 
 
 class Event(MailSyncBase, HasRevisions, HasPublicID):
@@ -84,13 +81,17 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     # database column.)
     deleted = False
 
-    __table_args__ = (UniqueConstraint('uid', 'source', 'namespace_id',
-                                       'provider_name', name='uuid'),
-                      Index('ix_event_ns_uid_provider_name',
-                            'namespace_id', 'uid', 'provider_name'))
+    # TODO - merge emfree changes and decide what to do about the
+    # unique constraint on UUID
+    __table_args__ = (Index('ix_event_ns_uid_provider_name',
+                            'namespace_id', 'uid', 'provider_name'),)
 
     participants = Column(MutableList.as_mutable(BigJSON), default=[],
                           nullable=True)
+
+    discriminator = Column('type', String(30))
+    __mapper_args__ = {'polymorphic_on': discriminator,
+                       'polymorphic_identity': 'event'}
 
     @validates('reminders', 'recurrence', 'owner', 'location', 'title',
                'raw_data')
@@ -134,6 +135,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         self.all_day = src.all_day
         self.calendar_id = src.calendar_id
         self.participants = src.participants
+        self.source = src.source
 
     @property
     def when(self):
@@ -171,47 +173,111 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
             # RRULE (required)
             # EXDATE (optional)
             return r
+        return []
 
-    def get_occurrences(self, start=None, stop=None):
-        if self.recurrence:
-            if not start:
-                start = self.start
-            start = start.replace(tzinfo=tz.gettz('UTC'))
+    @property
+    def is_recurring(self):
+        return self.recurrence is not None
 
-            if not stop:
-                stop = datetime.utcnow()
-                # Check this works with Feb 29
-                stop = stop.replace(year=stop.year + FUTURE_RECURRENCE_YEARS)
-            stop = stop.replace(tzinfo=tz.gettz('UTC'))
     @property
     def length(self):
         return self.when.delta
 
-            r = ast.literal_eval(self.recurrence)
-            excl_dates = []
-            for item in r:
-                # Handle TZID in EXDATE (TODO: submit PR to python-dateutil)
-                if item.startswith('EXDATE') and 'TZID' in item:
-                    name, values = item.split(':', 1)
-                    for p in name.split(';'):
-                        if p.startswith('TZID'):
-                            tzinfo = tz.gettz(p[5:])
-                            for v in values.split(','):
-                                # convert to UTC-aware dates
-                                t = date_parse(v).replace(tzinfo=tzinfo)
-                                excl_dates.append(t)
-                    r.remove(item)
 
-            s = "\n".join(r)
-            instances = rrulestr(s, dtstart=start, compatible=True)
-            # TODO: deal with weird things here that don't parse.
+class RecurringEvent(Event):
+    API_OBJECT_NAME = 'event_recurring'
 
-            if len(excl_dates) > 0:
-                if not isinstance(instances, rruleset):
-                    instances = rruleset().rrule(instances)
-                # Manually exclude the EXDATE dates.
-                map(instances.exdate, excl_dates)
+    __mapper_args__ = {'polymorphic_identity': 'recurringevent'}
+    __table_args__ = None
 
-            return instances.between(start, stop)
+    id = Column(Integer, ForeignKey('event.id'), primary_key=True)
+    rrule = Column(String(RECURRENCE_MAX_LEN))
+    exdate = Column(String(RECURRENCE_MAX_LEN))
+    until = Column(DateTime, nullable=True)
 
-        return [self.start]
+    def __init__(self, **kwargs):
+        super(RecurringEvent, self).__init__(**kwargs)
+        self.unwrap_rrule()
+
+    def inflate(self, start=None, end=None):  # TODO - is this the right home?
+        # Convert a RecurringEvent into a series of InflatedEvents
+        # This doesn't include its overrides; those are stored as individual
+        # RecurringEventOverrides and accessible via event.overrides
+        from inbox.events.recurring import get_start_times
+        occurrences = get_start_times(self, start, end)
+        return [InflatedEvent(self, o) for o in occurrences]
+
+    def unwrap_rrule(self):
+        # Unwraps the RRULE list into object properties.
+        for item in self.recurring:
+            if item.startswith('RRULE'):
+                self.rrule = item
+                if 'UNTIL' in item:
+                    for p in item.split(';'):
+                        if p.startswith('UNTIL'):
+                            dt = date_parse(p[6:])
+                            # UNTIL is always in UTC (RFC 2445 4.3.10)
+                            self.until = dt.replace(tzinfo=None)
+            elif item.startswith('EXDATE'):
+                self.exdate = item
+
+    def all_events(self, start=None, end=None):
+        inflated = self.inflate(start, end)
+        inflated.extend(self.overrides)
+        return sorted(inflated, key=lambda e: e.start)
+
+
+class RecurringEventOverride(Event):
+    API_OBJECT_NAME = 'event_override'
+
+    id = Column(Integer, ForeignKey('event.id'), primary_key=True)
+    master_event_id = Column(ForeignKey('event.id'))
+    master_event_uid = Column(String(767, collation='ascii_general_ci'))
+    original_start_time = Column(DateTime)
+
+    master = relationship(RecurringEvent, foreign_keys=[master_event_id],
+                          backref='overrides')
+
+    __mapper_args__ = {'polymorphic_identity': 'recurringeventoverride',
+                       'inherit_condition': (id == Event.id)}
+    __table_args__ = None
+
+
+class InflatedEvent(Event):
+    # NOTE: This is a transient object that should never be committed to the
+    # database (it's generated when a recurring event is expanded).
+    # Correspondingly, there doesn't need to be a table for this object,
+    # however we have to behave as if there is, so it behaves like an Event.
+    # TODO: I don't like this.
+    __mapper_args__ = {'polymorphic_identity': 'inflatedevent'}
+    __tablename__ = 'event'
+    __table_args__ = {'extend_existing': True}
+
+    def __init__(self, event, instance_start):
+        self.master = event
+        self.copy_from(self.master)
+        ts_id = instance_start.strftime("%Y%m%dT%H%M%SZ")
+        self.public_id = "{}-{}".format(self.master.public_id, ts_id)
+        self.set_start_end(instance_start)
+
+    def set_start_end(self, start):
+        # get the length from the master event
+        length = self.length
+
+        if start.utcoffset() is not None:
+            if start.utcoffset() == timedelta(minutes=0):
+                start = start.replace(tzinfo=None)  # Everything is naive UTC
+            else:
+                print start.utcoffset()
+                raise Exception("Encountered non-UTC timezone! Eek!")
+
+        self.start = start  # this should be a datetime in UTC
+        self.end = self.start + length
+        # todo - check this behaves cool with dates
+
+
+def insert_warning(mapper, connection, target):
+    log.warn("InflatedEvent {} shouldn't be committed".format(target))
+    raise Exception("InflatedEvent should not be committed")
+
+event.listen(InflatedEvent, 'before_insert', insert_warning)

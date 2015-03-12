@@ -11,6 +11,7 @@ from oauth2client.client import AccessTokenRefreshError
 
 from inbox.basicauth import (ConnectionError, ValidationError, OAuthError)
 from inbox.models import Event, Calendar
+from inbox.models.event import RecurringEvent, RecurringEventOverride
 from inbox.models.session import session_scope
 from inbox.models.backends.gmail import GmailAccount
 from inbox.models.backends.oauth import token_manager
@@ -19,6 +20,7 @@ from inbox.auth.gmail import (OAUTH_CLIENT_ID,
                               OAUTH_ACCESS_TOKEN_URL)
 from inbox.events.util import MalformedEventError, parse_datetime
 from inbox.events.base import BaseEventProvider
+from inbox.events.recurring import link_events
 
 SOURCE_APP_NAME = 'InboxApp Calendar Sync Engine'
 
@@ -139,9 +141,14 @@ class GoogleEventsProvider(BaseEventProvider):
 
             start = event['start']
             end = event['end']
-            g_recur = event.get('recurrence', None)
 
+            g_recur = event.get('recurrence', None)
             recurrence = str(g_recur) if g_recur else None
+            recurrence_override = False
+            override_master_uid = event.get('recurringEventId')
+            override_start = event.get('originalStartTime')
+            if override_start:
+                override_start = parse_datetime(override_start)
 
             busy = event.get('transparency', True)
             if busy == 'transparent':
@@ -220,24 +227,25 @@ class GoogleEventsProvider(BaseEventProvider):
         except (KeyError, AttributeError) as e:
             raise MalformedEventError(e)
 
-        return Event(namespace_id=self.namespace_id,
-                     uid=uid,
-                     provider_name=self.PROVIDER_NAME,
-                     raw_data=raw_data,
-                     title=title,
-                     description=description,
-                     location=location,
-                     reminders=reminders,
-                     recurrence=recurrence,
-                     start=start,
-                     end=end,
-                     owner=owner,
-                     is_owner=is_owner,
-                     busy=busy,
-                     all_day=all_day,
-                     read_only=read_only,
-                     source='remote',
-                     participants=participants)
+        event_type = Event
+        attributes = {'namespace_id': self.namespace_id, 'uid': uid,
+                      'provider_name': self.PROVIDER_NAME, 'title': title,
+                      'raw_data': raw_data, 'description': description,
+                      'location': location, 'reminders': reminders,
+                      'start': start, 'end': end,
+                      'owner': owner, 'is_owner': is_owner,
+                      'busy': busy, 'all_day': all_day,
+                      'read_only': read_only, 'source': 'remote',
+                      'participants': participants, 'recurrence': recurrence}
+
+        if recurrence:
+            event_type = RecurringEvent
+        if recurrence_override:
+            event_type = RecurringEventOverride
+            attributes['master_event_uid'] = override_master_uid
+            attributes['original_start_time'] = override_start
+             # TODO - Link, after Eben's changes
+        return event_type(**attributes)
 
     def create_attendee(self, participant):
         inv_status_map = {value: key for key, value in

@@ -575,6 +575,7 @@ def event_search_api():
     g.parser.add_argument('ends_before', type=timestamp, location='args')
     g.parser.add_argument('ends_after', type=timestamp, location='args')
     g.parser.add_argument('view', type=bounded_str, location='args')
+    g.parser.add_argument('expand_recurring', type=bool, location='args')
     args = strict_parse_args(g.parser, request.args)
 
     results = filtering.events(
@@ -592,6 +593,7 @@ def event_search_api():
         offset=args['offset'],
         source='local',
         view=args['view'],
+        expand_recurring=args['expand_recurring'],
         db_session=g.db_session)
 
     return g.encoder.jsonify(results)

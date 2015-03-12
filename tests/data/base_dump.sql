@@ -148,7 +148,7 @@ CREATE TABLE `alembic_version` (
 
 LOCK TABLES `alembic_version` WRITE;
 /*!40000 ALTER TABLE `alembic_version` DISABLE KEYS */;
-INSERT INTO `alembic_version` VALUES ('1d7a72222b7c');
+INSERT INTO `alembic_version` VALUES ('1de526a15c5d');
 /*!40000 ALTER TABLE `alembic_version` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -235,8 +235,8 @@ CREATE TABLE `calendar` (
   `provider_name` varchar(64) NOT NULL,
   `namespace_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uuid` (`namespace_id`,`provider_name`,`name`),
-  CONSTRAINT `calendar_ibfk_2` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`)
+  UNIQUE KEY `uuid` (`namespace_id`,`provider_name`,`name`,`uid`),
+  CONSTRAINT `calendar_ibfk_1` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -581,6 +581,7 @@ CREATE TABLE `event` (
   `read_only` tinyint(1) NOT NULL,
   `namespace_id` int(11) DEFAULT NULL,
   `participants` longtext,
+  `type` varchar(30) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uuid` (`uid`,`source`,`namespace_id`,`provider_name`),
   KEY `event_ibfk_2` (`calendar_id`),
@@ -588,7 +589,7 @@ CREATE TABLE `event` (
   KEY `ix_event_ns_uid_provider_name` (`namespace_id`,`uid`,`provider_name`),
   CONSTRAINT `event_ibfk_2` FOREIGN KEY (`calendar_id`) REFERENCES `calendar` (`id`) ON DELETE CASCADE,
   CONSTRAINT `event_ibfk_3` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -597,7 +598,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','inbox','p5ßë‹\rD_∂Î ä@Ø◊˝','','desc1','data1','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-02-01 00:00:01',0,'local','2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,1,0,1,'[]'),(2,'b9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπ‡FcÕVø\n','','desc2','data2','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-01-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1,1,'[]'),(3,'c9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπjFcÕVø\n','','desc5','data3','InboxHeadquarters',1,NULL,NULL,'1970-02-01 00:00:01','1970-03-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1,1,'[]');
+INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','inbox','p5ßë‹\rD_∂Î ä@Ø◊˝','','desc1','data1','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-02-01 00:00:01',0,'local','2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,1,0,1,'[]',NULL),(2,'b9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπ‡FcÕVø\n','','desc2','data2','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-01-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1,1,'[]',NULL),(3,'c9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπjFcÕVø\n','','desc5','data3','InboxHeadquarters',1,NULL,NULL,'1970-02-01 00:00:01','1970-03-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1,1,'[]',NULL);
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1316,6 +1317,86 @@ INSERT INTO `part` VALUES (1,1,0,NULL,NULL,0,1,'2014-09-06 02:07:52','2014-09-06
 UNLOCK TABLES;
 
 --
+-- Table structure for table `recurringevent`
+--
+
+DROP TABLE IF EXISTS `recurringevent`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `recurringevent` (
+  `id` int(11) NOT NULL,
+  `rrule` varchar(255) DEFAULT NULL,
+  `exdate` varchar(255) DEFAULT NULL,
+  `until` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `recurringevent_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `recurringevent`
+--
+
+LOCK TABLES `recurringevent` WRITE;
+/*!40000 ALTER TABLE `recurringevent` DISABLE KEYS */;
+/*!40000 ALTER TABLE `recurringevent` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `recurringeventmodified`
+--
+
+DROP TABLE IF EXISTS `recurringeventmodified`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `recurringeventmodified` (
+  `id` int(11) NOT NULL,
+  `rrule` varchar(255) DEFAULT NULL,
+  `exceptions` text,
+  `until` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `recurringeventmodified_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `recurringeventmodified`
+--
+
+LOCK TABLES `recurringeventmodified` WRITE;
+/*!40000 ALTER TABLE `recurringeventmodified` DISABLE KEYS */;
+/*!40000 ALTER TABLE `recurringeventmodified` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `recurringeventoverride`
+--
+
+DROP TABLE IF EXISTS `recurringeventoverride`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `recurringeventoverride` (
+  `id` int(11) NOT NULL,
+  `master_event_id` int(11) DEFAULT NULL,
+  `master_event_uid` varchar(767) CHARACTER SET ascii DEFAULT NULL,
+  `original_start_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `master_event_id` (`master_event_id`),
+  CONSTRAINT `recurringeventoverride_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`),
+  CONSTRAINT `recurringeventoverride_ibfk_2` FOREIGN KEY (`master_event_id`) REFERENCES `event` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `recurringeventoverride`
+--
+
+LOCK TABLES `recurringeventoverride` WRITE;
+/*!40000 ALTER TABLE `recurringeventoverride` DISABLE KEYS */;
+/*!40000 ALTER TABLE `recurringeventoverride` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `searchindexcursor`
 --
 
@@ -1774,4 +1855,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-02-20  0:03:55
+-- Dump completed on 2015-03-12 19:11:49

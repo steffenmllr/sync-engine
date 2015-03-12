@@ -28,8 +28,7 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
         filters.append(Thread.subjectdate > started_after)
 
     if last_message_before is not None:
-        filters.append(Thread.recentdate <
-                               last_message_before)
+        filters.append(Thread.recentdate < last_message_before)
 
     if last_message_after is not None:
         filters.append(Thread.recentdate > last_message_after)
@@ -298,22 +297,53 @@ def files(namespace_id, message_public_id, filename, content_type,
         return query.all()
 
 
+def filter_event_query(query, base_type, namespace_id, event_public_id,
+                       calendar_public_id, title, description, location):
+
+    query = query.filter(base_type.namespace_id == namespace_id)
+
+    if event_public_id:
+        query = query.filter(base_type.public_id == event_public_id)
+
+    if calendar_public_id is not None:
+        query = query.join(Calendar). \
+            filter(Calendar.public_id == calendar_public_id,
+                   Calendar.namespace_id == namespace_id)
+
+    if title is not None:
+        query = query.filter(base_type.title.like('%{}%'.format(title)))
+
+    if description is not None:
+        query = query.filter(base_type.description.like('%{}%'
+                                                        .format(description)))
+
+    if location is not None:
+        query = query.filter(base_type.location.like('%{}%'.format(location)))
+
+    query = query.filter(base_type.source=='local')
+
+    return query
+
+
 def events(namespace_id, event_public_id, calendar_public_id, title,
            description, location, starts_before, starts_after, ends_before,
-           ends_after, source, limit, offset, view, db_session):
+           ends_after, source, limit, offset, view, expand_recurring,
+           db_session):
+    from inbox.models.event import RecurringEvent
 
-    if view == 'count':
-        query = db_session.query(func.count(Event.id))
-    elif view == 'ids':
-        query = db_session.query(Event.public_id)
-    else:
-        query = db_session.query(Event)
+    query = db_session.query(Event)
 
-    query = query.filter(Event.namespace_id == namespace_id)
+    if not expand_recurring:
+        if view == 'count':
+            query = db_session.query(func.count(Event.id))
+        elif view == 'ids':
+            query = db_session.query(Event.public_id)
+
+    filters = [namespace_id, event_public_id, calendar_public_id,
+               title, description, location]
+    query = filter_event_query(query, Event, *filters)
 
     event_criteria = []
-    if event_public_id:
-        query = query.filter(Event.public_id == event_public_id)
 
     if starts_before is not None:
         event_criteria.append(Event.start < starts_before)
@@ -330,35 +360,65 @@ def events(namespace_id, event_public_id, calendar_public_id, title,
     event_predicate = and_(*event_criteria)
     query = query.filter(event_predicate)
 
-    if calendar_public_id is not None:
-        query = query.join(Calendar). \
-            filter(Calendar.public_id == calendar_public_id,
-                   Calendar.namespace_id == namespace_id)
+    if expand_recurring:
+        # expand individual recurring events as instances
+        # if starts_before or ends_before not given, the recurring range
+        # defaults to now + 1 year (see events/recurring.py)
+        recur_query = db_session.query(RecurringEvent)
+        recur_query = filter_event_query(recur_query, RecurringEvent, *filters)
 
-    if title is not None:
-        query = query.filter(Event.title.like('%{}%'.format(title)))
+        all_events = query.all()
 
-    if description is not None:
-        query = query.filter(Event.description.like('%{}%'
-                                                    .format(description)))
+        before_criteria = []
+        if starts_before:
+            before_criteria.append(RecurringEvent.start < starts_before)
+        if ends_before:
+            # start < end, so if start < ends_before, we can filter out
+            # recurrences that don't meet these criteria.
+            before_criteria.append(RecurringEvent.start < ends_before)
+        recur_query = recur_query.filter(and_(*before_criteria))
+        after_criteria = []
+        if starts_after:
+            after_criteria.append(or_(RecurringEvent.until > starts_after,
+                                      RecurringEvent.until == None))
+        if ends_after:
+            after_criteria.append(or_(RecurringEvent.until > ends_after,
+                                      RecurringEvent.until == None))
+        recur_query = recur_query.filter(and_(*after_criteria))
+        recur_instances = []
+        for r in recur_query:
+            # the occurrences check only checks starting timestamps
+            if ends_before and not starts_before:
+                starts_before = ends_before - r.length
+            instances = r.inflate(start=starts_after, end=starts_before)
+            print 'Inflated event {} -> {} items'.format(r.id, len(instances))
+            recur_instances.extend(instances)
 
-    if location is not None:
-        query = query.filter(Event.location.like('%{}%'.format(location)))
+        all_events.extend(recur_instances)
 
-    if source is not None:
-        query = query.filter(Event.source == source)
+        if view == 'count':
+            return {"count": len(all_events)}
 
-    if view == 'count':
-        return {"count": query.one()[0]}
+        all_events = sorted(all_events, key=lambda e: e.start)
 
-    query = query.order_by(asc(Event.start)).limit(limit)
-
-    if offset:
-        query = query.offset(offset)
+        # we have to handle limit and offset here: the inflated events
+        # aren't present in the database, so sql limit/offset don't work.
+        if limit:
+            offset = offset or 0
+            all_events = all_events[offset:offset + limit]
+        all_events.reverse()  # I HAVE NO IDEA WHY THE API CLIENT NEEDS THIS
+        # FIXME STOPSHIP ETC
+    else:
+        if view == 'count':
+            return {"count": query.one()[0]}
+        query = query.order_by(asc(Event.start)).limit(limit)
+        if offset:
+            query = query.offset(offset)
+        all_events = query.all()
 
     if view == 'ids':
-        return [x[0] for x in query.all()]
+        return [x[0] for x in all_events]  # TODO check this works!
     else:
         # Eager-load some objects in order to make constructing API
         # representations faster.
-        return query.all()
+        return all_events
