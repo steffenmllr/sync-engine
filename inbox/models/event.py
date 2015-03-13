@@ -137,6 +137,8 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         self.busy = event.busy
         self.reminders = event.reminders
         self.recurrence = event.recurrence
+        # TODO this update method has to handle a recurring event being updated
+        # define an overload that calls super on the childrenz
 
     @property
     def recurring(self):
@@ -214,6 +216,13 @@ class RecurringEvent(Event):
                 events.append(e)
         return sorted(events, key=lambda e: e.start)
 
+    def update(self, event):
+        super(RecurringEvent, self).update(event)
+        self.rrule = event.rrule
+        self.exdate = event.exdate
+        self.until = event.until
+        self.start_timezone = event.start_timezone
+
 
 class RecurringEventOverride(Event):
     API_OBJECT_NAME = 'event_override'
@@ -230,6 +239,11 @@ class RecurringEventOverride(Event):
                        'inherit_condition': (id == Event.id)}
     __table_args__ = None
 
+    def update(self, event):
+        super(RecurringEventOverride, self).update(event)
+        self.master_event_uid = event.master_event_uid
+        self.original_start_time = event.original_start_time
+
 
 class InflatedEvent(Event):
     # NOTE: This is a transient object that should never be committed to the
@@ -243,7 +257,7 @@ class InflatedEvent(Event):
 
     def __init__(self, event, instance_start):
         self.master = event
-        self.copy_from(self.master)
+        self.update(self.master)
         # Give inflated events a UID consisting of the master UID and the
         # original UTC start time of the inflation.
         ts_id = instance_start.strftime("%Y%m%dT%H%M%SZ")
@@ -265,6 +279,11 @@ class InflatedEvent(Event):
         self.start = start  # this should be a datetime in UTC
         self.end = self.start + length
         # todo - check this behaves cool with dates
+
+    def update(self, master):
+        super(InflatedEvent, self).update(master)
+        self.namespace_id = master.namespace_id
+        self.calendar_id = master.calendar_id
 
 
 def insert_warning(mapper, connection, target):
