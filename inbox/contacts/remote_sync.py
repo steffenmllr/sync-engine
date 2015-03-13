@@ -7,13 +7,15 @@ from inbox.log import get_logger
 logger = get_logger()
 from inbox.models import Contact, Account
 from inbox.sync.base_sync import BaseSyncMonitor
+from inbox.contacts.google import GoogleContactsProvider
+from inbox.contacts.icloud import ICloudContactsProvider
 from inbox.util.debug import bind_context
 from inbox.models.session import session_scope
 from inbox.basicauth import ValidationError
 
-from inbox.contacts.google import GoogleContactsProvider
 
-CONTACT_SYNC_PROVIDER_MAP = {'gmail': GoogleContactsProvider}
+CONTACT_SYNC_PROVIDER_MAP = {'gmail': GoogleContactsProvider,
+                             'icloud': ICloudContactsProvider}
 
 CONTACT_SYNC_FOLDER_ID = -1
 CONTACT_SYNC_FOLDER_NAME = 'Contacts'
@@ -44,8 +46,6 @@ class ContactSync(BaseSyncMonitor):
         self.log = logger.new(account_id=account_id, component='contact sync')
         self.log.info('Begin syncing contacts...')
 
-        self.folder_name = CONTACT_SYNC_FOLDER_NAME
-        self.email_address = email_address
         self.provider_name = provider_name
 
         provider_cls = CONTACT_SYNC_PROVIDER_MAP[self.provider_name]
@@ -54,7 +54,10 @@ class ContactSync(BaseSyncMonitor):
         BaseSyncMonitor.__init__(self,
                                  account_id,
                                  namespace_id,
+                                 email_address,
                                  CONTACT_SYNC_FOLDER_ID,
+                                 CONTACT_SYNC_FOLDER_NAME,
+                                 provider_name,
                                  poll_frequency=poll_frequency,
                                  retry_fail_classes=[ValidationError])
 

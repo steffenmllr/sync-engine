@@ -8,6 +8,8 @@ from inbox.events.recurring import (link_events, get_start_times,
 from inbox.models.event import (Event, RecurringEvent, RecurringEventOverride)
 from inbox.models.when import Date, Time, DateSpan, TimeSpan
 
+from tests.util.base import new_account
+
 # FIXME -> Fixture
 from default_event import recurring_event, recurring_override
 
@@ -16,6 +18,57 @@ TEST_RRULE = ["RRULE:FREQ=WEEKLY;UNTIL=20140918T203000Z;BYDAY=TH"]
 TEST_EXDATE = ["EXDATE;TZID=America/Los_Angeles:20140904T133000"]
 TEST_EXDATE_RULE = TEST_RRULE[:]
 TEST_EXDATE_RULE.extend(TEST_EXDATE)
+
+
+def recurring_event(db_session, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
+                    end=datetime(2014, 8, 7, 21, 30, 00)):
+    ev = db_session.query(RecurringEvent).filter_by(uid='myuid').first()
+    if ev:
+        db_session.delete(ev)
+    cal = new_account.default_calendar
+    ev = RecurringEvent(namespace_id=new_account.namespace.id,
+                        calendar=cal,
+                        title='recurring',
+                        description='',
+                        uid='myuid',
+                        location='',
+                        busy=False,
+                        read_only=False,
+                        reminders='',
+                        recurrence=str(rrule),
+                        start=start,
+                        end=end,
+                        all_day=False,
+                        provider_name='inbox',
+                        raw_data='',
+                        original_start_tz='America/Los_Angeles',
+                        source='local')
+    db_session.add(ev)
+    db_session.commit()
+    return ev
+
+
+def recurring_override(db_session, master, original_start, start, end):
+    override_uid = '{}_{}'.format(master.uid,
+                                  original_start.strftime("%Y%m%dT%H%M%SZ"))
+    ev = db_session.query(RecurringEventOverride).\
+        filter_by(uid=override_uid).first()
+    if ev:
+        db_session.delete(ev)
+    db_session.commit()
+    ev = RecurringEventOverride(original_start_time=original_start,
+                                master_event_uid=master.uid)
+    ev.copy_from(master)
+    ev.uid = override_uid
+    # This is populated from the {recurringEventId, original_start_time} data
+    # TODO - maybe use that + linking logic here
+    ev.start = start
+    ev.end = end
+    ev.master = master
+    ev.master_event_uid = master.uid
+    db_session.add(ev)
+    db_session.commit()
+    return ev
 
 
 def utcdate(*args):

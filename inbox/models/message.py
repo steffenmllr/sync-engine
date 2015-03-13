@@ -2,8 +2,10 @@ import os
 import json
 import datetime
 import base64
+import itertools
 from hashlib import sha256
 from flanker import mime
+from collections import defaultdict
 
 from sqlalchemy import (Column, Integer, BigInteger, String, DateTime,
                         Boolean, Enum, ForeignKey, Text, Index)
@@ -196,6 +198,13 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         msg = Message()
 
         try:
+            from inbox.models.block import Block, Part
+            body_block = Block()
+            body_block.namespace_id = account.namespace.id
+            body_block.data = body_string
+            body_block.content_type = "text/plain"
+            msg.full_body = body_block
+
             msg.namespace_id = account.namespace.id
             parsed = mime.from_string(body_string)
 
@@ -230,13 +239,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
             msg.references = parse_references(
                 parsed.headers.get('References', ''),
                 parsed.headers.get('In-Reply-To', ''))
-
-            from inbox.models.block import Block, Part
-            body_block = Block()
-            body_block.namespace_id = account.namespace.id
-            body_block.data = body_string
-            body_block.content_type = "text/plain"
-            msg.full_body = body_block
 
             msg.size = len(body_string)  # includes headers text
 
@@ -361,8 +363,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
             self.snippet = u''
 
     def calculate_html_snippet(self, text):
-        text = text.replace('<br>', ' ').replace('<br/>', ' '). \
-            replace('<br />', ' ')
         text = strip_tags(text)
         return self.calculate_plaintext_snippet(text)
 
@@ -399,6 +399,39 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         json_headers = json.JSONDecoder().decode(headers)
 
         return json_headers
+
+    @property
+    def participants(self):
+        """
+        Different messages in the thread may reference the same email
+        address with different phrases. We partially deduplicate: if the same
+        email address occurs with both empty and nonempty phrase, we don't
+        separately return the (empty phrase, address) pair.
+
+        """
+        deduped_participants = defaultdict(set)
+        chain = []
+        if self.from_addr:
+            chain.append(self.from_addr)
+
+        if self.to_addr:
+            chain.append(self.to_addr)
+
+        if self.cc_addr:
+            chain.append(self.cc_addr)
+
+        if self.bcc_addr:
+            chain.append(self.bcc_addr)
+
+        for phrase, address in itertools.chain.from_iterable(chain):
+            deduped_participants[address].add(phrase.strip())
+
+        p = []
+        for address, phrases in deduped_participants.iteritems():
+            for phrase in phrases:
+                if phrase != '' or len(phrases) == 1:
+                    p.append((phrase, address))
+        return p
 
     @property
     def folders(self):

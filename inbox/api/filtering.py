@@ -297,13 +297,13 @@ def files(namespace_id, message_public_id, filename, content_type,
         return query.all()
 
 
-def filter_event_query(query, base_type, namespace_id, event_public_id,
+def filter_event_query(query, event_cls, namespace_id, event_public_id,
                        calendar_public_id, title, description, location):
 
-    query = query.filter(base_type.namespace_id == namespace_id)
+    query = query.filter(event_cls.namespace_id == namespace_id)
 
     if event_public_id:
-        query = query.filter(base_type.public_id == event_public_id)
+        query = query.filter(event_cls.public_id == event_public_id)
 
     if calendar_public_id is not None:
         query = query.join(Calendar). \
@@ -311,24 +311,23 @@ def filter_event_query(query, base_type, namespace_id, event_public_id,
                    Calendar.namespace_id == namespace_id)
 
     if title is not None:
-        query = query.filter(base_type.title.like('%{}%'.format(title)))
+        query = query.filter(event_cls.title.like('%{}%'.format(title)))
 
     if description is not None:
-        query = query.filter(base_type.description.like('%{}%'
+        query = query.filter(event_cls.description.like('%{}%'
                                                         .format(description)))
 
     if location is not None:
-        query = query.filter(base_type.location.like('%{}%'.format(location)))
+        query = query.filter(event_cls.location.like('%{}%'.format(location)))
 
-    query = query.filter(base_type.source=='local')
+    query = query.filter(event_cls.source=='local')
 
     return query
 
 
 def events(namespace_id, event_public_id, calendar_public_id, title,
            description, location, starts_before, starts_after, ends_before,
-           ends_after, source, limit, offset, view, expand_recurring,
-           db_session):
+           ends_after, limit, offset, view, expand_recurring, db_session):
     from inbox.models.event import RecurringEvent
 
     query = db_session.query(Event)
