@@ -1328,6 +1328,7 @@ CREATE TABLE `recurringevent` (
   `rrule` varchar(255) DEFAULT NULL,
   `exdate` varchar(255) DEFAULT NULL,
   `until` datetime DEFAULT NULL,
+  `start_timezone` varchar(35) DEFAULT NULL,
   PRIMARY KEY (`id`),
   CONSTRAINT `recurringevent_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -1855,4 +1856,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-03-12 19:11:49
+-- Dump completed on 2015-03-13 19:04:13

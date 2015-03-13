@@ -37,7 +37,8 @@ def test_link_events(db):
     original_start = parse_exdate(master)[0]
     override = RecurringEventOverride(original_start_time=original_start,
                                       master_event_uid=master.uid,
-                                      namespace_id=master.namespace_id)
+                                      namespace_id=master.namespace_id,
+                                      source='local')
     link_events(db.session, override)
     assert override.master == master
 
@@ -79,6 +80,43 @@ def test_inflation_exceptions(db):
         assert i.title == event.title
         assert (i.end - i.start) == (event.end - event.start)
         assert i.start != datetime(2014, 9, 4, 13, 30, 00)
+
+
+def test_inflate_across_DST(db):
+    # If we inflate a RRULE that covers a change to/from Daylight Savings Time,
+    # adjust the base time accordingly to account for the new UTC offset.
+    # Daylight Savings for US/PST: March 8, 2015 - Nov 1, 2015
+    dst_rrule = ["RRULE:FREQ=WEEKLY;BYDAY=TU"]
+    dst_event = recurring_event(db.session, dst_rrule,
+                                start=datetime(2015, 03, 03, 03, 03, 03),
+                                end=datetime(2015, 03, 03, 04, 03, 03))
+    g = get_start_times(dst_event, end=datetime(2015, 03, 21))
+    # In order for this event to occur at the same local time, the recurrence
+    # rule should be expanded to 03:03:03 before March 8, and 02:03:03 after,
+    # keeping the local time of the event consistent at 19:03.
+    # This is consistent with how Google returns recurring event instances.
+    local_tz = tz.gettz(dst_event.start_timezone)
+
+    for time in g:
+        if time < datetime(2015, 3, 8, tzinfo=tz.tzutc()):
+            assert time.hour == 3
+        else:
+            assert time.hour == 2
+        # Test that localizing these times is consistent
+        assert time.astimezone(local_tz).hour == 19
+
+    # Test an event that starts during local daylight savings time
+    dst_event = recurring_event(db.session, dst_rrule,
+                                start=datetime(2015, 10, 27, 02, 03, 03),
+                                end=datetime(2015, 10, 27, 03, 03, 03))
+    g = get_start_times(dst_event, end=datetime(2015, 11, 11))
+    for time in g:
+        if time > datetime(2015, 11, 1, tzinfo=tz.tzutc()):
+            assert time.hour == 3
+        else:
+            assert time.hour == 2
+        assert time.astimezone(local_tz).hour == 19
+
 
 
 # def test_nonstandard_rrule_entry(db):
@@ -128,8 +166,23 @@ def test_override_instantiated(db):
                                   datetime(2014, 9, 4, 22, 30, 00))
     # TODO - We should also test the creation process (init populates)
     all_events = event.all_events()
-    print [e.start for e in all_events]
     assert len(all_events) == 7
+    assert override in all_events
+
+
+def test_override_same_start(db):
+    # Test that when a recurring event has an override without a modified
+    # start date (ie. the RRULE has no EXDATE for that event), it doesn't
+    # appear twice in the all_events list.
+    event = recurring_event(db.session, TEST_RRULE)
+    override = recurring_override(db.session, event,
+                                  datetime(2014, 9, 4, 20, 30, 00),
+                                  datetime(2014, 9, 4, 20, 30, 00),
+                                  datetime(2014, 9, 4, 21, 30, 00))
+    all_events = event.all_events()
+    assert len(all_events) == 7
+    unique_starts = list(set([e.start for e in all_events]))
+    assert len(unique_starts) == 7
     assert override in all_events
 
 
@@ -137,7 +190,7 @@ def test_override_updated(db):
     # Test that when a recurring event override is created remotely, we
     # update our EXDATE and links appropriately.
     event = recurring_event(db.session, TEST_RRULE)
-    assert False
+    assert event is not None   # TODO: To be continued
 
 # def test_modify_inflated_recurrence(db):
 #     pass

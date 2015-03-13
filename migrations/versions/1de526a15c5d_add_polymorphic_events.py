@@ -34,6 +34,7 @@ def upgrade():
         sa.Column('rrule', sa.String(length=255), nullable=True),
         sa.Column('exdate', sa.String(length=255), nullable=True),
         sa.Column('until', sa.DateTime(), nullable=True),
+        sa.Column('start_timezone', sa.String(35), nullable=True),
         sa.ForeignKeyConstraint(['id'], ['event.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
@@ -52,7 +53,7 @@ def populate():
     from inbox.models.event import RecurringEvent, RecurringEventOverride
     from inbox.models.session import session_scope
     from inbox.events.util import parse_datetime
-    from inbox.events.recurring import (link_events, parse_exdate)
+    from inbox.events.recurring import link_events
 
     with session_scope() as db:
         # Slightly hacky way to convert types (only needed for one-off import)
@@ -115,9 +116,9 @@ def populate():
         query = db.query(RecurringEvent)
         for r in query:
             r.unwrap_rrule()
-           # r.exceptions = parse_exdate(r)
-         #   print r.exceptions
-            # find any un-found overrides
+            raw_data = ast.literal_eval(e.raw_data)
+            r.start_timezone = raw_data['start'].get('timeZone')
+            # find any un-found overrides that didn't have masters earlier
             overrides = link_events(db, r)
             if len(overrides) > 0:
                 print "{} overrides found for {}".format(len(overrides), r.id)
@@ -125,6 +126,11 @@ def populate():
                 print "No overrides found for {}".format(r.id)
             db.add(r)
         db.commit()
+
+        # Finally, convert all remaining Events to type='event'
+        convert = """UPDATE event SET type='event' WHERE type IS NULL"""
+        db.execute(convert)
+
 
 if __name__ == "__main__":
     populate()

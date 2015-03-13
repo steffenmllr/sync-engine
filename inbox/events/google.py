@@ -144,7 +144,8 @@ class GoogleEventsProvider(BaseEventProvider):
 
             g_recur = event.get('recurrence', None)
             recurrence = str(g_recur) if g_recur else None
-            recurrence_override = False
+            if recurrence:
+                recurrence_start_tz = start.get('timeZone')
             override_master_uid = event.get('recurringEventId')
             override_start = event.get('originalStartTime')
             if override_start:
@@ -240,7 +241,8 @@ class GoogleEventsProvider(BaseEventProvider):
 
         if recurrence:
             event_type = RecurringEvent
-        if recurrence_override:
+            attributes['original_start_tz'] = recurrence_start_tz
+        if override_master_uid:
             event_type = RecurringEventOverride
             attributes['master_event_uid'] = override_master_uid
             attributes['original_start_time'] = override_start

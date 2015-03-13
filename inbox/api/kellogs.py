@@ -137,7 +137,7 @@ def encode(obj, namespace_public_id=None):
             'description': obj.description,
             'participants': [_format_participant_data(participant)
                              for participant in obj.participants],
-            'recurring': obj.is_recurring,  #TODO RRULE
+            'recurrence': obj.recurrence,
             'read_only': obj.read_only,
             'location': obj.location,
             'when': encode(obj.when)

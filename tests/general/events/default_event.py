@@ -37,10 +37,11 @@ def default_event(db_session):
     return ev
 
 
-def recurring_event(db_session, rrule):
+def recurring_event(db_session, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
+                    end=datetime(2014, 8, 7, 21, 30, 00)):
     ev = db_session.query(RecurringEvent).filter_by(uid='myuid').first()
     if ev:
-        return ev
+        db_session.delete(ev)
     cal = default_calendar(db_session)
     ev = RecurringEvent(namespace_id=NAMESPACE_ID,
                         calendar=cal,
@@ -52,11 +53,12 @@ def recurring_event(db_session, rrule):
                         read_only=False,
                         reminders='',
                         recurrence=str(rrule),
-                        start=datetime(2014, 8, 7, 20, 30, 00),
-                        end=datetime(2014, 8, 7, 21, 30, 00),
+                        start=start,
+                        end=end,
                         all_day=False,
                         provider_name='inbox',
                         raw_data='',
+                        original_start_tz='America/Los_Angeles',
                         source='local')
     db_session.add(ev)
     db_session.commit()
@@ -64,14 +66,17 @@ def recurring_event(db_session, rrule):
 
 
 def recurring_override(db_session, master, original_start, start, end):
+    override_uid = '{}_{}'.format(master.uid,
+                                  original_start.strftime("%Y%m%dT%H%M%SZ"))
     ev = db_session.query(RecurringEventOverride).\
-        filter_by(uid='recuid').first()
+        filter_by(uid=override_uid).first()
     if ev:
-        return ev
+        db_session.delete(ev)
+    db_session.commit()
     ev = RecurringEventOverride(original_start_time=original_start,
                                 master_event_uid=master.uid)
     ev.copy_from(master)
-    ev.uid = 'recuid'
+    ev.uid = override_uid
     # This is populated from the {recurringEventId, original_start_time} data
     # TODO - maybe use that + linking logic here
     ev.start = start

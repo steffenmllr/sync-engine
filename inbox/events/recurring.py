@@ -24,7 +24,8 @@ def link_overrides(db_session, event):
     # RecurringEvent instance.
     overrides = db_session.query(RecurringEventOverride).\
         filter_by(namespace_id=event.namespace_id,
-                  master_event_uid=event.uid).all()
+                  master_event_uid=event.uid,
+                  source=event.source).all()
     for o in overrides:
         if not o.master:
             o.master = event
@@ -40,7 +41,8 @@ def link_master(db_session, event):
             print 'looking for master at {}'.format(event.master_event_uid)
             master = db_session.query(RecurringEvent).\
                 filter_by(namespace_id=event.namespace_id,
-                          uid=event.master_event_uid).first()
+                          uid=event.master_event_uid,
+                          source=event.source).first()
             if master:
                 event.master = master
     # Check that master has a EXDATE
@@ -50,7 +52,7 @@ def link_master(db_session, event):
 def parse_rrule(event):
     # Parse the RRULE string and return a dateutil.rrule.rrule object
     if event.rrule is not None:
-        start = event.start.replace(tzinfo=tz.gettz('UTC'))
+        start = event.start.replace(tzinfo=tz.tzutc())
         # TODO: Deal with things that don't parse here.
         rrule = rrulestr(event.rrule, dtstart=start, compatible=True)
         return rrule
@@ -63,7 +65,7 @@ def parse_exdate(event):
     excl_dates = []
     if event.exdate:
         name, values = event.exdate.split(':', 1)
-        tzinfo = tz.gettz('UTC')
+        tzinfo = tz.tzutc()
         for p in name.split(';'):
             # Handle TZID in EXDATE (TODO: submit PR to python-dateutil)
             if p.startswith('TZID'):
@@ -76,17 +78,22 @@ def parse_exdate(event):
 
 
 def get_start_times(event, start=None, end=None):
+    # Expands the rrule on event to return a list of datetimes representing
+    # start times for its recurring instances.
+    # If start and/or end are supplied, will return times within that range.
+
     # Note that rrule expansion returns timezone-aware datetimes.
     if isinstance(event, RecurringEvent):
         if not start:
             start = event.start
-        start = start.replace(tzinfo=tz.gettz('UTC'))
+        # rrule requires timezone-aware datetimes
+        start = start.replace(tzinfo=tz.tzutc())
 
         if not end:
             end = datetime.utcnow()
             # Check this works with Feb 29
             end = end.replace(year=end.year + FUTURE_RECURRENCE_YEARS)
-        end = end.replace(tzinfo=tz.gettz('UTC'))
+        end = end.replace(tzinfo=tz.tzutc())
 
         excl_dates = parse_exdate(event)
         rrules = parse_rrule(event)
@@ -99,7 +106,27 @@ def get_start_times(event, start=None, end=None):
         # Needs more timezone testing
         # Return all start times between start and end, including start and
         # end themselves if they obey the rule.
-        return rrules.between(start, end, inc=True)
+        start_times = rrules.between(start, end, inc=True)
+
+        # Localize to the event's timezone to account for DST
+        # (an event starting at 9:30 local time should continue to start at
+        # 9:30 after a DST switch, so the UTC time needs to change)
+
+        if event.start_timezone:
+            master_tz = tz.gettz(event.start_timezone)
+
+            def adjust_dst(t):
+                # Adjust the time t by DST offset if not in same DST period
+                # as the original start
+                master_offset = master_tz.dst(event.start)
+                t_offset = master_tz.dst(t)
+                if master_offset != t_offset:
+                    t += master_offset - t_offset
+                return t
+
+            start_times = map(adjust_dst, start_times)
+
+        return start_times
 
     return [event.start]
 

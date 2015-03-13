@@ -11,6 +11,6 @@ def parse_datetime(date):
         raise MalformedEventError()
     try:
         dt = date_parser.parse(date)
-        return dt.astimezone(tz.gettz('UTC')).replace(tzinfo=None)
+        return dt.astimezone(tz.tzutc()).replace(tzinfo=None)
     except ValueError:
         raise MalformedEventError()

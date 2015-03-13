@@ -194,21 +194,23 @@ class RecurringEvent(Event):
     rrule = Column(String(RECURRENCE_MAX_LEN))
     exdate = Column(String(RECURRENCE_MAX_LEN))
     until = Column(DateTime, nullable=True)
+    start_timezone = Column(String(35))
 
     def __init__(self, **kwargs):
+        self.start_timezone = kwargs.pop('original_start_tz')
         super(RecurringEvent, self).__init__(**kwargs)
         self.unwrap_rrule()
 
-    def inflate(self, start=None, end=None):  # TODO - is this the right home?
+    def inflate(self, start=None, end=None):
         # Convert a RecurringEvent into a series of InflatedEvents
-        # This doesn't include its overrides; those are stored as individual
-        # RecurringEventOverrides and accessible via event.overrides
+        # by expanding its RRULE into a series of start times.
         from inbox.events.recurring import get_start_times
+        # TODO: Can I move this somewhere else to avoid this import?
         occurrences = get_start_times(self, start, end)
         return [InflatedEvent(self, o) for o in occurrences]
 
     def unwrap_rrule(self):
-        # Unwraps the RRULE list into object properties.
+        # Unwraps the RRULE list of strings into RecurringEvent properties.
         for item in self.recurring:
             if item.startswith('RRULE'):
                 self.rrule = item
@@ -222,9 +224,22 @@ class RecurringEvent(Event):
                 self.exdate = item
 
     def all_events(self, start=None, end=None):
-        inflated = self.inflate(start, end)
-        inflated.extend(self.overrides)
-        return sorted(inflated, key=lambda e: e.start)
+        # Returns all inflated events along with overrides that match the
+        # provided time range.
+        overrides = self.overrides
+        if start:
+            overrides = overrides.filter(RecurringEventOverride.start > start)
+        if end:
+            overrides = overrides.filter(RecurringEventOverride.end < end)
+        events = list(overrides)
+        uids = {e.uid: True for e in events}
+        # If an override has not changed the start time for an event, the
+        # RRULE doesn't include an exception for it. Filter out unnecessary
+        # inflated events to cover this case: they will have the same UID.
+        for e in self.inflate(start, end):
+            if e.uid not in uids:
+                events.append(e)
+        return sorted(events, key=lambda e: e.start)
 
 
 class RecurringEventOverride(Event):
@@ -236,7 +251,7 @@ class RecurringEventOverride(Event):
     original_start_time = Column(DateTime)
 
     master = relationship(RecurringEvent, foreign_keys=[master_event_id],
-                          backref='overrides')
+                          backref=backref('overrides', lazy="dynamic"))
 
     __mapper_args__ = {'polymorphic_identity': 'recurringeventoverride',
                        'inherit_condition': (id == Event.id)}
@@ -248,7 +263,7 @@ class InflatedEvent(Event):
     # database (it's generated when a recurring event is expanded).
     # Correspondingly, there doesn't need to be a table for this object,
     # however we have to behave as if there is, so it behaves like an Event.
-    # TODO: I don't like this.
+    # TODO: I don't like this that much.
     __mapper_args__ = {'polymorphic_identity': 'inflatedevent'}
     __tablename__ = 'event'
     __table_args__ = {'extend_existing': True}
@@ -256,8 +271,11 @@ class InflatedEvent(Event):
     def __init__(self, event, instance_start):
         self.master = event
         self.copy_from(self.master)
+        # Give inflated events a UID consisting of the master UID and the
+        # original UTC start time of the inflation.
         ts_id = instance_start.strftime("%Y%m%dT%H%M%SZ")
-        self.public_id = "{}-{}".format(self.master.public_id, ts_id)
+        self.uid = "{}_{}".format(self.master.uid, ts_id)
+        self.public_id = "{}_{}".format(self.master.public_id, ts_id)
         self.set_start_end(instance_start)
 
     def set_start_end(self, start):

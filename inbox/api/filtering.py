@@ -361,13 +361,14 @@ def events(namespace_id, event_public_id, calendar_public_id, title,
     query = query.filter(event_predicate)
 
     if expand_recurring:
+
+        # TODO - lets make this a recurring_events function
+
         # expand individual recurring events as instances
         # if starts_before or ends_before not given, the recurring range
         # defaults to now + 1 year (see events/recurring.py)
         recur_query = db_session.query(RecurringEvent)
         recur_query = filter_event_query(recur_query, RecurringEvent, *filters)
-
-        all_events = query.all()
 
         before_criteria = []
         if starts_before:
@@ -385,16 +386,19 @@ def events(namespace_id, event_public_id, calendar_public_id, title,
             after_criteria.append(or_(RecurringEvent.until > ends_after,
                                       RecurringEvent.until == None))
         recur_query = recur_query.filter(and_(*after_criteria))
+
         recur_instances = []
         for r in recur_query:
             # the occurrences check only checks starting timestamps
             if ends_before and not starts_before:
                 starts_before = ends_before - r.length
-            instances = r.inflate(start=starts_after, end=starts_before)
+            instances = r.all_events(start=starts_after, end=starts_before)
             print 'Inflated event {} -> {} items'.format(r.id, len(instances))
             recur_instances.extend(instances)
 
-        all_events.extend(recur_instances)
+        # Combine explicitly non-recurring events with expanded recurring ones
+        all_events = query.filter(Event.discriminator == 'event').all() + \
+            recur_instances
 
         if view == 'count':
             return {"count": len(all_events)}
