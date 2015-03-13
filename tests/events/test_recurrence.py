@@ -8,11 +8,6 @@ from inbox.events.recurring import (link_events, get_start_times,
 from inbox.models.event import (Event, RecurringEvent, RecurringEventOverride)
 from inbox.models.when import Date, Time, DateSpan, TimeSpan
 
-from tests.util.base import new_account
-
-# FIXME -> Fixture
-from default_event import recurring_event, recurring_override
-
 
 TEST_RRULE = ["RRULE:FREQ=WEEKLY;UNTIL=20140918T203000Z;BYDAY=TH"]
 TEST_EXDATE = ["EXDATE;TZID=America/Los_Angeles:20140904T133000"]
@@ -20,13 +15,13 @@ TEST_EXDATE_RULE = TEST_RRULE[:]
 TEST_EXDATE_RULE.extend(TEST_EXDATE)
 
 
-def recurring_event(db_session, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
+def recurring_event(db, account, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
                     end=datetime(2014, 8, 7, 21, 30, 00)):
-    ev = db_session.query(RecurringEvent).filter_by(uid='myuid').first()
+    ev = db.session.query(RecurringEvent).filter_by(uid='myuid').first()
     if ev:
-        db_session.delete(ev)
-    cal = new_account.default_calendar
-    ev = RecurringEvent(namespace_id=new_account.namespace.id,
+        db.session.delete(ev)
+    cal = account.default_calendar
+    ev = RecurringEvent(namespace_id=account.namespace.id,
                         calendar=cal,
                         title='recurring',
                         description='',
@@ -43,22 +38,24 @@ def recurring_event(db_session, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
                         raw_data='',
                         original_start_tz='America/Los_Angeles',
                         source='local')
-    db_session.add(ev)
-    db_session.commit()
+    db.session.add(ev)
+    db.session.commit()
     return ev
 
 
-def recurring_override(db_session, master, original_start, start, end):
+def recurring_override(db, master, original_start, start, end):
     override_uid = '{}_{}'.format(master.uid,
                                   original_start.strftime("%Y%m%dT%H%M%SZ"))
-    ev = db_session.query(RecurringEventOverride).\
+    ev = db.session.query(RecurringEventOverride).\
         filter_by(uid=override_uid).first()
     if ev:
-        db_session.delete(ev)
-    db_session.commit()
+        db.session.delete(ev)
+    db.session.commit()
     ev = RecurringEventOverride(original_start_time=original_start,
-                                master_event_uid=master.uid)
-    ev.copy_from(master)
+                                master_event_uid=master.uid,
+                                namespace_id=master.namespace_id,
+                                calendar_id=master.calendar_id)
+    ev.update(master)
     ev.uid = override_uid
     # This is populated from the {recurringEventId, original_start_time} data
     # TODO - maybe use that + linking logic here
@@ -66,8 +63,8 @@ def recurring_override(db_session, master, original_start, start, end):
     ev.end = end
     ev.master = master
     ev.master_event_uid = master.uid
-    db_session.add(ev)
-    db_session.commit()
+    db.session.add(ev)
+    db.session.commit()
     return ev
 
 
@@ -75,18 +72,18 @@ def utcdate(*args):
     return datetime(*args, tzinfo=tz.gettz('UTC'))
 
 
-def test_create_recurrence(db):
+def test_create_recurrence(db, default_account):
     # TODO update with emfree's new tests
-    event = recurring_event(db.session, TEST_EXDATE_RULE)
+    event = recurring_event(db, default_account, TEST_EXDATE_RULE)
     assert event.rrule is not None
     assert event.exdate is not None
     assert event.until is not None
 
 
-def test_link_events(db):
+def test_link_events(db, default_account):
     # Test that by creating a recurring event and override separately, we
     # can link them together based on UID and namespace_id
-    master = recurring_event(db.session, TEST_EXDATE_RULE)
+    master = recurring_event(db, default_account, TEST_EXDATE_RULE)
     original_start = parse_exdate(master)[0]
     override = RecurringEventOverride(original_start_time=original_start,
                                       master_event_uid=master.uid,
@@ -96,28 +93,28 @@ def test_link_events(db):
     assert override.master == master
 
 
-def test_rrule_parsing(db):
+def test_rrule_parsing(db, default_account):
     # This test event starts on Aug 7 and recurs every Thursday at 20:30
     # until Sept 18.
     # There should be 7 total occurrences including Aug 7 and Sept 18.
-    event = recurring_event(db.session, TEST_RRULE)
+    event = recurring_event(db, default_account, TEST_RRULE)
     g = get_start_times(event)
     print g
     assert len(g) == 7
 
 
-def test_rrule_exceptions(db):
+def test_rrule_exceptions(db, default_account):
     # This test event starts on Aug 7 and recurs every Thursday at 20:30
     # until Sept 18, except on September 4.
-    event = recurring_event(db.session, TEST_EXDATE_RULE)
+    event = recurring_event(db, default_account, TEST_EXDATE_RULE)
     g = get_start_times(event)
     print g
     assert len(g) == 6
     assert utcdate(2014, 9, 4, 13, 30, 00) not in g
 
 
-def test_inflation(db):
-    event = recurring_event(db.session, TEST_RRULE)
+def test_inflation(db, default_account):
+    event = recurring_event(db, default_account, TEST_RRULE)
     infl = event.inflate()
     for i in infl:
         print 'Event {}: {} - {}'.format(i.uid, i.start, i.end)
@@ -125,8 +122,8 @@ def test_inflation(db):
         assert (i.end - i.start) == (event.end - event.start)
 
 
-def test_inflation_exceptions(db):
-    event = recurring_event(db.session, TEST_RRULE)
+def test_inflation_exceptions(db, default_account):
+    event = recurring_event(db, default_account, TEST_RRULE)
     infl = event.inflate()
     for i in infl:
         print 'Event {}: {} - {}'.format(i.uid, i.start, i.end)
@@ -135,12 +132,12 @@ def test_inflation_exceptions(db):
         assert i.start != datetime(2014, 9, 4, 13, 30, 00)
 
 
-def test_inflate_across_DST(db):
+def test_inflate_across_DST(db, default_account):
     # If we inflate a RRULE that covers a change to/from Daylight Savings Time,
     # adjust the base time accordingly to account for the new UTC offset.
     # Daylight Savings for US/PST: March 8, 2015 - Nov 1, 2015
     dst_rrule = ["RRULE:FREQ=WEEKLY;BYDAY=TU"]
-    dst_event = recurring_event(db.session, dst_rrule,
+    dst_event = recurring_event(db, default_account, dst_rrule,
                                 start=datetime(2015, 03, 03, 03, 03, 03),
                                 end=datetime(2015, 03, 03, 04, 03, 03))
     g = get_start_times(dst_event, end=datetime(2015, 03, 21))
@@ -159,7 +156,7 @@ def test_inflate_across_DST(db):
         assert time.astimezone(local_tz).hour == 19
 
     # Test an event that starts during local daylight savings time
-    dst_event = recurring_event(db.session, dst_rrule,
+    dst_event = recurring_event(db, default_account, dst_rrule,
                                 start=datetime(2015, 10, 27, 02, 03, 03),
                                 end=datetime(2015, 10, 27, 03, 03, 03))
     g = get_start_times(dst_event, end=datetime(2015, 11, 11))
@@ -170,30 +167,28 @@ def test_inflate_across_DST(db):
             assert time.hour == 2
         assert time.astimezone(local_tz).hour == 19
 
-
-
-# def test_nonstandard_rrule_entry(db):
+# def test_nonstandard_rrule_entry(db, default_account):
 #     pass
 
 
-# def test_cant_inflate_non_recurring(db):
+# def test_cant_inflate_non_recurring(db, default_account):
 #     pass
 
 
-# def test_parent_appears_in_recurrences(db):
+# def test_parent_appears_in_recurrences(db, default_account):
 #     pass
 
 
-# def test_timezones_with_rrules(db):
+# def test_timezones_with_rrules(db, default_account):
 #     pass
 
 
-# def test_ids_for_inflated_events(db):
+# def test_ids_for_inflated_events(db, default_account):
 #     pass
 
 
-def test_inflated_events_cant_persist(db):
-    event = recurring_event(db.session, TEST_RRULE)
+def test_inflated_events_cant_persist(db, default_account):
+    event = recurring_event(db, default_account, TEST_RRULE)
     infl = event.inflate()
     for i in infl:
         db.session.add(i)
@@ -204,16 +199,16 @@ def test_inflated_events_cant_persist(db):
         assert 'should not be committed' in str(excinfo.value)
 
 
-# def test_all_day_recurrences(db):
+# def test_all_day_recurrences(db, default_account):
 #     pass
 
 
-def test_override_instantiated(db):
+def test_override_instantiated(db, default_account):
     # Test that when a recurring event has overrides, they show up as
     # RecurringEventOverrides, have links back to the parent, and don't
     # appear twice in the event list.
-    event = recurring_event(db.session, TEST_EXDATE_RULE)
-    override = recurring_override(db.session, event,
+    event = recurring_event(db, default_account, TEST_EXDATE_RULE)
+    override = recurring_override(db, event,
                                   datetime(2014, 9, 4, 20, 30, 00),
                                   datetime(2014, 9, 4, 21, 30, 00),
                                   datetime(2014, 9, 4, 22, 30, 00))
@@ -223,12 +218,12 @@ def test_override_instantiated(db):
     assert override in all_events
 
 
-def test_override_same_start(db):
+def test_override_same_start(db, default_account):
     # Test that when a recurring event has an override without a modified
     # start date (ie. the RRULE has no EXDATE for that event), it doesn't
     # appear twice in the all_events list.
-    event = recurring_event(db.session, TEST_RRULE)
-    override = recurring_override(db.session, event,
+    event = recurring_event(db, default_account, TEST_RRULE)
+    override = recurring_override(db, event,
                                   datetime(2014, 9, 4, 20, 30, 00),
                                   datetime(2014, 9, 4, 20, 30, 00),
                                   datetime(2014, 9, 4, 21, 30, 00))
@@ -239,21 +234,21 @@ def test_override_same_start(db):
     assert override in all_events
 
 
-def test_override_updated(db):
+def test_override_updated(db, default_account):
     # Test that when a recurring event override is created remotely, we
     # update our EXDATE and links appropriately.
-    event = recurring_event(db.session, TEST_RRULE)
+    event = recurring_event(db, default_account, TEST_RRULE)
     assert event is not None   # TODO: To be continued
 
-# def test_modify_inflated_recurrence(db):
+# def test_modify_inflated_recurrence(db, default_account):
 #     pass
 
 
-# def test_rsvp_all_recurrences(db):
+# def test_rsvp_all_recurrences(db, default_account):
 #     pass
 
 
-# def test_rsvp_single_recurrence(db):
+# def test_rsvp_single_recurrence(db, default_account):
 #     pass
 
 
@@ -310,17 +305,17 @@ def test_rrule_to_json():
 # API tests
 
 
-# def test_paging_with_recurrences(db):
+# def test_paging_with_recurrences(db, default_account):
 #     pass
 
 
-# def test_before_after_recurrence(db):
+# def test_before_after_recurrence(db, default_account):
 #     pass
 
 
-# def test_count_with_recurrence(db):
+# def test_count_with_recurrence(db, default_account):
 #     pass
 
 
-# def test_ids_with_recurrence(db):
+# def test_ids_with_recurrence(db, default_account):
 #     pass

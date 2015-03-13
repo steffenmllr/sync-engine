@@ -218,10 +218,11 @@ class RecurringEvent(Event):
 
     def update(self, event):
         super(RecurringEvent, self).update(event)
-        self.rrule = event.rrule
-        self.exdate = event.exdate
-        self.until = event.until
-        self.start_timezone = event.start_timezone
+        if isinstance(event, type(self)):
+            self.rrule = event.rrule
+            self.exdate = event.exdate
+            self.until = event.until
+            self.start_timezone = event.start_timezone
 
 
 class RecurringEventOverride(Event):
@@ -241,8 +242,9 @@ class RecurringEventOverride(Event):
 
     def update(self, event):
         super(RecurringEventOverride, self).update(event)
-        self.master_event_uid = event.master_event_uid
-        self.original_start_time = event.original_start_time
+        if isinstance(event, type(self)):
+            self.master_event_uid = event.master_event_uid
+            self.original_start_time = event.original_start_time
 
 
 class InflatedEvent(Event):

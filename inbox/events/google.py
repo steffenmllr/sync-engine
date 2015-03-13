@@ -263,7 +263,7 @@ def parse_event_response(event):
     recurrence = None
     if 'recurrence' in event:
         recurrence = str(event['recurrence'])
-        recurrence_start_tz = start.get('timeZone')
+        recurrence_start_tz = _start.get('timeZone')
 
     override_master_uid = event.get('recurringEventId')
     override_start = event.get('originalStartTime')
