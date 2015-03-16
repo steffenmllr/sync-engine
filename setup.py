@@ -42,7 +42,8 @@ setup(
         "httplib2>=0.8",
         "six>=1.8",
         "vobject>=0.8.1c",
-        "lxml>=3.4.2"
+        "lxml>=3.4.2",
+	"arrow==0.5.4"
     ],
     dependency_links=[],
 

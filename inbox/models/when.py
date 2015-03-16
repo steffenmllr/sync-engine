@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
-from dateutil.parser import parse as date_parse
+import arrow
+from datetime import timedelta
 
 
 def parse_as_when(raw):
@@ -23,7 +23,56 @@ def parse_as_when(raw):
     return when_type.parse(raw)
 
 
+def get_property_or_default(obj, prefix):
+    # If any of the properties defined on this object match the prefix, return
+    # the value of that property.
+    for key, value in obj.__dict__.iteritems():
+        if key.startswith(prefix):
+            return value
+    # Otherwise, we check that there is exactly one property, and return that
+    assert len(obj.__dict__) == 1
+    return value
+
+
+def parse_utc(datetime):
+    # Arrow can handle epoch timestamps as well as most ISO-8601 strings
+    return arrow.get(datetime).to('utc')
+
+
 class When(object):
+
+    @property
+    def all_day(self):
+        return isinstance(self, AllDayWhen)
+
+    @property
+    def spanning(self):
+        return isinstance(self, SpanningWhen)
+
+    @property
+    def is_time(self):
+        return isinstance(self, Time) or isinstance(self, TimeSpan)
+
+    @property
+    def is_date(self):
+        return isinstance(self, Date) or isinstance(self, DateSpan)
+
+    @property
+    def start(self):
+        # Do we have a start_ property? Return that, or our only property.
+        return get_property_or_default(self, 'start_')
+
+    @property
+    def end(self):
+        # Do we have a start_ property? Return that, or our only property.
+        return get_property_or_default(self, 'end_')
+
+
+class AllDayWhen(When):
+    pass
+
+
+class SpanningWhen(When):
     pass
 
 
@@ -31,7 +80,7 @@ class Time(When):
     @classmethod
     def parse(cls, raw):
         try:
-            time = datetime.utcfromtimestamp(raw['time'])
+            time = parse_utc(raw['time'])
         except (ValueError, TypeError):
             raise ValueError("'time' parameter invalid.")
         return cls(time)
@@ -44,12 +93,12 @@ class Time(When):
         return timedelta(minutes=0)
 
 
-class TimeSpan(When):
+class TimeSpan(SpanningWhen):
     @classmethod
     def parse(cls, raw):
         try:
-            start_time = datetime.utcfromtimestamp(raw['start_time'])
-            end_time = datetime.utcfromtimestamp(raw['end_time'])
+            start_time = parse_utc(raw['start_time'])
+            end_time = parse_utc(raw['end_time'])
         except (ValueError, TypeError):
             raise ValueError("'start_time' or 'end_time' invalid.")
         if start_time >= end_time:
@@ -65,11 +114,11 @@ class TimeSpan(When):
         return self.end_time - self.start_time
 
 
-class Date(When):
+class Date(AllDayWhen):
     @classmethod
     def parse(cls, raw):
         try:
-            date = date_parse(raw['date'])
+            date = parse_utc(raw['date']).date()
         except (AttributeError, ValueError, TypeError):
             raise ValueError("'date' parameter invalid.")
         return cls(date)
@@ -82,12 +131,12 @@ class Date(When):
         return timedelta(days=0)
 
 
-class DateSpan(When):
+class DateSpan(AllDayWhen, SpanningWhen):
     @classmethod
     def parse(cls, raw):
         try:
-            start_date = date_parse(raw['start_date'])
-            end_date = date_parse(raw['end_date'])
+            start_date = parse_utc(raw['start_date']).date()
+            end_date = parse_utc(raw['end_date']).date()
         except (AttributeError, ValueError, TypeError):
             raise ValueError("'start_date' or 'end_date' invalid.")
         if start_date >= end_date:
