@@ -146,7 +146,7 @@ American Declaration of Independence:
 :::json
 {
     "object": "date",
-    "start_date": "1776-07-04"
+    "date": "1776-07-04"
 }
 ```
 
