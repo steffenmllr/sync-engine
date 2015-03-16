@@ -101,8 +101,10 @@ class TimeSpan(SpanningWhen):
             end_time = parse_utc(raw['end_time'])
         except (ValueError, TypeError):
             raise ValueError("'start_time' or 'end_time' invalid.")
-        if start_time >= end_time:
+        if start_time > end_time:
             raise ValueError("'start_date' must be < 'end_date'.")
+        if start_time == end_time:
+            return Time(start_time)
         return cls(start_time, end_time)
 
     def __init__(self, start, end):
@@ -139,8 +141,10 @@ class DateSpan(AllDayWhen, SpanningWhen):
             end_date = parse_utc(raw['end_date']).date()
         except (AttributeError, ValueError, TypeError):
             raise ValueError("'start_date' or 'end_date' invalid.")
-        if start_date >= end_date:
+        if start_date > end_date:
             raise ValueError("'start_date' must be < 'end_date'.")
+        if start_date == end_date:
+            return Date(start_date)
         return cls(start_date, end_date)
 
     def __init__(self, start, end):

@@ -62,3 +62,20 @@ def test_when_datespan():
     assert not ts.is_time
     assert ts.is_date
     assert ts.delta == timedelta(days=1)
+
+
+def test_when_spans_arent_spans():
+    # If start and end are the same, don't create a Span object
+    start_date = arrow.get('2014-09-30')
+    end_date = arrow.get('2014-09-30')
+    datespan = {'start_date': start_date.format('YYYY-MM-DD'),
+                'end_date': end_date.format('YYYY-MM-DD')}
+    ts = parse_as_when(datespan)
+    assert isinstance(ts, Date)
+
+    start_time = arrow.get('2014-09-30T15:34:00.000-07:00')
+    end_time = arrow.get('2014-09-30T15:34:00.000-07:00')
+    timespan = {'start_time': start_time.timestamp,
+                'end_time': end_time.timestamp}
+    ts = parse_as_when(timespan)
+    assert isinstance(ts, Time)
