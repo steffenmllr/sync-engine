@@ -213,7 +213,6 @@ def test_override_instantiated(db, default_account):
                                   arrow.get(2014, 9, 4, 20, 30, 00),
                                   arrow.get(2014, 9, 4, 21, 30, 00),
                                   arrow.get(2014, 9, 4, 22, 30, 00))
-    # TODO - We should also test the creation process (init populates)
     all_events = event.all_events()
     assert len(all_events) == 7
     assert override in all_events

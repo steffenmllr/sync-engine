@@ -149,7 +149,7 @@ def test_api_invalid_event_when_timespan_bad_params(db, api_client):
     with pytest.raises(CreateError):
         _verify_create(ns_id, api_client, e_data)
 
-    e_data['when'] = {'start_time': 0, 'end_time': 0}
+    e_data['when'] = {'start_time': 1, 'end_time': 0}
     with pytest.raises(CreateError):
         _verify_create(ns_id, api_client, e_data)
 
@@ -184,7 +184,7 @@ def test_api_invalid_event_when_datespan_bad_params(db, api_client):
         _verify_create(ns_id, api_client, e_data)
 
     e_data['when'] = {'start_date': '2014-08-27',
-                      'end_date': '2014-08-27'}
+                      'end_date': '2014-08-26'}
     with pytest.raises(CreateError):
         _verify_create(ns_id, api_client, e_data)
 

@@ -104,7 +104,7 @@ def get_start_times(event, start=None, end=None):
         # end themselves if they obey the rule.
         start_times = rrules.between(start, end, inc=True)
 
-        # Convert back to UTC
+        # Convert back to UTC, which covers daylight savings differences
         start_times = [arrow.get(t).to('utc') for t in start_times]
 
         return start_times

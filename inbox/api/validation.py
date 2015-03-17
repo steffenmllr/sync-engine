@@ -1,5 +1,6 @@
 """Utilities for validating user input to the API."""
 from datetime import datetime
+from arrow.parser import ParserError
 from flanker.addresslib import address
 from flask.ext.restful import reqparse
 from sqlalchemy.orm.exc import NoResultFound
@@ -203,7 +204,7 @@ def get_calendar(calendar_public_id, namespace, db_session):
 def valid_when(when):
     try:
         parse_as_when(when)
-    except ValueError as e:
+    except (ValueError, ParserError) as e:
         raise InputError(str(e))
 
 
