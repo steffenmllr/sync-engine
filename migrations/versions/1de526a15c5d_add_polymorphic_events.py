@@ -24,7 +24,7 @@ def upgrade():
         sa.Column('master_event_uid', sa.String(
             length=767, collation='ascii_general_ci'), nullable=True),
         sa.Column('original_start_time', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['id'], ['event.id'], ),
+        sa.ForeignKeyConstraint(['id'], ['event.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['master_event_id'], ['event.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
@@ -35,7 +35,7 @@ def upgrade():
         sa.Column('exdate', sa.String(length=255), nullable=True),
         sa.Column('until', sa.DateTime(), nullable=True),
         sa.Column('start_timezone', sa.String(35), nullable=True),
-        sa.ForeignKeyConstraint(['id'], ['event.id'], ),
+        sa.ForeignKeyConstraint(['id'], ['event.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id')
     )
     op.add_column(u'event', sa.Column('type', sa.String(length=30),

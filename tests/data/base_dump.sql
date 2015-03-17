@@ -1329,7 +1329,7 @@ CREATE TABLE `recurringevent` (
   `until` datetime DEFAULT NULL,
   `start_timezone` varchar(35) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  CONSTRAINT `recurringevent_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`)
+  CONSTRAINT `recurringevent_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1340,32 +1340,6 @@ CREATE TABLE `recurringevent` (
 LOCK TABLES `recurringevent` WRITE;
 /*!40000 ALTER TABLE `recurringevent` DISABLE KEYS */;
 /*!40000 ALTER TABLE `recurringevent` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
--- Table structure for table `recurringeventmodified`
---
-
-DROP TABLE IF EXISTS `recurringeventmodified`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `recurringeventmodified` (
-  `id` int(11) NOT NULL,
-  `rrule` varchar(255) DEFAULT NULL,
-  `exceptions` text,
-  `until` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `recurringeventmodified_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `recurringeventmodified`
---
-
-LOCK TABLES `recurringeventmodified` WRITE;
-/*!40000 ALTER TABLE `recurringeventmodified` DISABLE KEYS */;
-/*!40000 ALTER TABLE `recurringeventmodified` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --

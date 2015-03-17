@@ -5,7 +5,7 @@ from dateutil.parser import parse as date_parse
 import ast
 
 from sqlalchemy import (Column, String, ForeignKey, Text, Boolean, Integer,
-                        DateTime, Enum, UniqueConstraint, Index, event)
+                        DateTime, Enum, Index, event)
 from sqlalchemy.orm import relationship, backref, validates
 from sqlalchemy.types import TypeDecorator
 
@@ -208,7 +208,8 @@ class RecurringEvent(Event):
     __mapper_args__ = {'polymorphic_identity': 'recurringevent'}
     __table_args__ = None
 
-    id = Column(Integer, ForeignKey('event.id'), primary_key=True)
+    id = Column(Integer, ForeignKey('event.id', ondelete='CASCADE'),
+                primary_key=True)
     rrule = Column(String(RECURRENCE_MAX_LEN))
     exdate = Column(String(RECURRENCE_MAX_LEN))
     until = Column(FlexibleDateTime, nullable=True)
@@ -269,7 +270,8 @@ class RecurringEvent(Event):
 class RecurringEventOverride(Event):
     API_OBJECT_NAME = 'event_override'
     # TODO - DELETE CASCADES ! ##
-    id = Column(Integer, ForeignKey('event.id'), primary_key=True)
+    id = Column(Integer, ForeignKey('event.id', ondelete='CASCADE'),
+                primary_key=True)
     __mapper_args__ = {'polymorphic_identity': 'recurringeventoverride',
                        'inherit_condition': (id == Event.id)}
     __table_args__ = None
