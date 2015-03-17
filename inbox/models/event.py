@@ -47,6 +47,9 @@ class FlexibleDateTime(TypeDecorator):
         else:
             return arrow.get(value)
 
+    def compare_values(self, x, y):
+        return arrow.get(x) == arrow.get(y)
+
 
 class Event(MailSyncBase, HasRevisions, HasPublicID):
     """Data for events."""
