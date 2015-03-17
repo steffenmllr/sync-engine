@@ -10,8 +10,18 @@ class MalformedEventError(Exception):
 
 def parse_datetime(datetime):
     # returns a UTC-aware datetime
-    # TODO: does it have to be made naive?
     return arrow.get(datetime).to('utc')
+
+
+def parse_rrule_datetime(datetime, tzinfo=None):
+    # format: 20140904T133000Z
+    if datetime[-1] == 'Z':
+        tzinfo = 'UTC'
+        datetime = datetime[:-1]
+    dt = arrow.get(datetime, 'YYYYMMDDTHHmmss')
+    if tzinfo and tzinfo != 'UTC':
+        dt = arrow.get(dt.datetime, tzinfo)
+    return dt
 
 EventTime = namedtuple('EventTime', ['start', 'end', 'all_day'])
 

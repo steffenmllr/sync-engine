@@ -1,11 +1,10 @@
 import arrow
-from dateutil.parser import parse as date_parse
-from dateutil import tz
 from dateutil.rrule import (rrulestr, rrule, rruleset,
                             MO, TU, WE, TH, FR, SA, SU)
 
 from inbox.models.event import (RecurringEvent, RecurringEventOverride,
                                 InflatedEvent)
+from inbox.events.util import parse_rrule_datetime
 
 # How far in the future to expand recurring events
 EXPAND_RECURRING_YEARS = 1
@@ -66,14 +65,14 @@ def parse_exdate(event):
     excl_dates = []
     if event.exdate:
         name, values = event.exdate.split(':', 1)
-        tzinfo = tz.tzutc()
+        tzinfo = 'UTC'
         for p in name.split(';'):
             # Handle TZID in EXDATE (TODO: submit PR to python-dateutil)
             if p.startswith('TZID'):
-                tzinfo = tz.gettz(p[5:])
+                tzinfo = p[5:]
         for v in values.split(','):
             # convert to timezone-aware dates
-            t = date_parse(v).replace(tzinfo=tzinfo)
+            t = parse_rrule_datetime(v, tzinfo)
             excl_dates.append(t)
     return excl_dates
 
@@ -147,6 +146,3 @@ def rrule_to_json(r):
                            'count', 'until']:  # tzinfo?
             j[fieldname] = value
     return j
-
-
-# helpers to parse from the original recurring string

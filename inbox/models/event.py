@@ -15,6 +15,8 @@ from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.calendar import Calendar
 from inbox.models.namespace import Namespace
 from inbox.models.when import Time, TimeSpan, Date, DateSpan
+from inbox.events.util import parse_rrule_datetime
+
 from inbox.log import get_logger
 log = get_logger()
 
@@ -233,9 +235,7 @@ class RecurringEvent(Event):
                 if 'UNTIL' in item:
                     for p in item.split(';'):
                         if p.startswith('UNTIL'):
-                            # UNTIL is always in UTC (RFC 2445 4.3.10)
-                            # Format: 20150209T075959Z
-                            self.until = arrow.get(p[6:-1], 'YYYYMMDDThhmmss')
+                            self.until = parse_rrule_datetime(p[6:-1])
             elif item.startswith('EXDATE'):
                 self.exdate = item
 
