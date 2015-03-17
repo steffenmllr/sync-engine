@@ -120,7 +120,7 @@ class Date(AllDayWhen):
     @classmethod
     def parse(cls, raw):
         try:
-            date = parse_utc(raw['date']).date()
+            date = parse_utc(raw['date'])
         except (AttributeError, ValueError, TypeError):
             raise ValueError("'date' parameter invalid.")
         return cls(date)
@@ -137,8 +137,8 @@ class DateSpan(AllDayWhen, SpanningWhen):
     @classmethod
     def parse(cls, raw):
         try:
-            start_date = parse_utc(raw['start_date']).date()
-            end_date = parse_utc(raw['end_date']).date()
+            start_date = parse_utc(raw['start_date'])
+            end_date = parse_utc(raw['end_date'])
         except (AttributeError, ValueError, TypeError):
             raise ValueError("'start_date' or 'end_date' invalid.")
         if start_date > end_date:

@@ -7,11 +7,9 @@ import requests
 
 from inbox.log import get_logger
 from inbox.models import Event, Calendar, Account
-from inbox.models.event import RecurringEvent, RecurringEventOverride
 from inbox.models.session import session_scope
 from inbox.models.backends.oauth import token_manager
-from inbox.events.recurring import link_events
-from inbox.events.util import parse_datetime
+from inbox.events.util import google_to_event_time, parse_google_time
 
 
 log = get_logger()
@@ -225,13 +223,11 @@ def parse_event_response(event):
     # Timing data
     _start = event['start']
     _end = event['end']
-    all_day = ('date' in _start and 'date' in _end)
-    if all_day:
-        start = parse_datetime(_start['date'])
-        end = parse_datetime(_end['date']) - datetime.timedelta(days=1)
-    else:
-        start = parse_datetime(_start['dateTime'])
-        end = parse_datetime(_end['dateTime'])
+    _original = event.get('originalStartTime', {})
+
+    event_time = google_to_event_time(_start, _end)
+    original_start = parse_google_time(_original)
+    start_tz = _start.get('timeZone')
 
     description = event.get('description')
     location = event.get('location')
@@ -260,45 +256,29 @@ def parse_event_response(event):
             'notes': attendee.get('comment')
         })
 
-    recurrence = None
-    if 'recurrence' in event:
-        recurrence = str(event['recurrence'])
-        recurrence_start_tz = _start.get('timeZone')
+    # Recurring master or override info
+    recurrence = event.get('recurrence')
+    master_uid = event.get('recurringEventId')
 
-    override_master_uid = event.get('recurringEventId')
-    override_start = event.get('originalStartTime')
-    if override_start:
-        override_start = parse_datetime(override_start)
-
-    event_cls = Event
-    recur_info = {}
-
-    if recurrence:
-        event_cls = RecurringEvent
-        recur_info['original_start_tz'] = recurrence_start_tz
-    if override_master_uid:
-        event_cls = RecurringEventOverride
-        recur_info['master_event_uid'] = override_master_uid
-        recur_info['original_start_time'] = override_start
-        # TODO - See if we can put this in the Event constructor, that would be fun
-
-    return event_cls(uid=uid,
-                     raw_data=raw_data,
-                     title=title,
-                     description=description,
-                     location=location,
-                     busy=busy,
-                     start=start,
-                     end=end,
-                     all_day=all_day,
-                     owner=owner,
-                     is_owner=is_owner,
-                     read_only=read_only,
-                     participants=participants,
-                     recurrence=recurrence,
-                     # TODO(emfree): remove after data cleanup
-                     source='local',
-                     **recur_info)
+    return Event(uid=uid,
+                 raw_data=raw_data,
+                 title=title,
+                 description=description,
+                 location=location,
+                 busy=busy,
+                 start=event_time.start,
+                 end=event_time.end,
+                 all_day=event_time.all_day,
+                 owner=owner,
+                 is_owner=is_owner,
+                 read_only=read_only,
+                 participants=participants,
+                 recurrence=recurrence,
+                 original_start_tz=start_tz,
+                 original_start_time=original_start,
+                 master_event_uid=master_uid,
+                 # TODO(emfree): remove after data cleanup
+                 source='local')
 
 
 def _dump_event(event):

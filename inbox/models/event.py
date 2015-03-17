@@ -1,3 +1,4 @@
+import arrow
 from datetime import datetime, timedelta
 time_parse = datetime.utcfromtimestamp
 from dateutil.parser import parse as date_parse
@@ -6,6 +7,7 @@ import ast
 from sqlalchemy import (Column, String, ForeignKey, Text, Boolean, Integer,
                         DateTime, Enum, UniqueConstraint, Index, event)
 from sqlalchemy.orm import relationship, backref, validates
+from sqlalchemy.types import TypeDecorator
 
 from inbox.sqlalchemy_ext.util import MAX_TEXT_LENGTH, BigJSON, MutableList
 from inbox.models.base import MailSyncBase
@@ -27,6 +29,17 @@ _LENGTHS = {'location': LOCATION_MAX_LEN,
             'reminders': REMINDER_MAX_LEN,
             'title': TITLE_MAX_LEN,
             'raw_data': MAX_TEXT_LENGTH}
+
+
+class FlexibleDateTime(TypeDecorator):
+    """Coerce arrow times to naive datetimes before handing to the database."""
+
+    impl = DateTime
+
+    def process_bind_param(self, value, dialect):
+        if isinstance(value, arrow.arrow.Arrow):
+            value = value.to('utc').naive
+        return value
 
 
 class Event(MailSyncBase, HasRevisions, HasPublicID):
@@ -72,8 +85,8 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     read_only = Column(Boolean, nullable=False)
     reminders = Column(String(REMINDER_MAX_LEN), nullable=True)
     recurrence = Column(String(RECURRENCE_MAX_LEN), nullable=True)
-    start = Column(DateTime, nullable=False)
-    end = Column(DateTime, nullable=True)
+    start = Column(FlexibleDateTime, nullable=False)
+    end = Column(FlexibleDateTime, nullable=True)
     all_day = Column(Boolean, nullable=False)
     is_owner = Column(Boolean, nullable=False, default=True)
 
@@ -96,6 +109,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     @property
     def when(self):
         if self.all_day:
+            # Dates are stored as DateTimes so transform to dates here.
             start = self.start.date()
             end = self.end.date()
             return Date(start) if start == end else DateSpan(start, end)
@@ -158,6 +172,24 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     def length(self):
         return self.when.delta
 
+    @classmethod
+    def __new__(cls, *args, **kwargs):
+        # Decide whether or not to instantiate a RecurringEvent/Override
+        # based on the kwargs we get.
+        cls_ = cls
+        if kwargs.get('recurrence') is not None:
+            cls_ = RecurringEvent
+        if kwargs.get('master_event_uid') is not None:
+            cls_ = RecurringEventOverride
+        return object.__new__(cls_, *args, **kwargs)
+
+    def __init__(self, **kwargs):
+        # Allow arguments for all subclasses to be passed to main constructor
+        for k in kwargs.keys():
+            if not hasattr(type(self), k):
+                del kwargs[k]
+        super(Event, self).__init__(**kwargs)
+
 
 class RecurringEvent(Event):
     API_OBJECT_NAME = 'event_recurring'
@@ -168,11 +200,12 @@ class RecurringEvent(Event):
     id = Column(Integer, ForeignKey('event.id'), primary_key=True)
     rrule = Column(String(RECURRENCE_MAX_LEN))
     exdate = Column(String(RECURRENCE_MAX_LEN))
-    until = Column(DateTime, nullable=True)
+    until = Column(FlexibleDateTime, nullable=True)
     start_timezone = Column(String(35))
 
     def __init__(self, **kwargs):
-        self.start_timezone = kwargs.pop('original_start_tz')
+        self.start_timezone = kwargs.pop('original_start_tz', None)
+        kwargs['recurrence'] = str(kwargs['recurrence'])
         super(RecurringEvent, self).__init__(**kwargs)
         self.unwrap_rrule()
 
@@ -180,7 +213,6 @@ class RecurringEvent(Event):
         # Convert a RecurringEvent into a series of InflatedEvents
         # by expanding its RRULE into a series of start times.
         from inbox.events.recurring import get_start_times
-        # TODO: Can I move this somewhere else to avoid this import?
         occurrences = get_start_times(self, start, end)
         return [InflatedEvent(self, o) for o in occurrences]
 
@@ -192,9 +224,9 @@ class RecurringEvent(Event):
                 if 'UNTIL' in item:
                     for p in item.split(';'):
                         if p.startswith('UNTIL'):
-                            dt = date_parse(p[6:])
                             # UNTIL is always in UTC (RFC 2445 4.3.10)
-                            self.until = dt.replace(tzinfo=None)
+                            # Format: 20150209T075959Z
+                            self.until = arrow.get(p[6:-1], 'YYYYMMDDThhmmss')
             elif item.startswith('EXDATE'):
                 self.exdate = item
 
@@ -229,16 +261,16 @@ class RecurringEventOverride(Event):
     API_OBJECT_NAME = 'event_override'
 
     id = Column(Integer, ForeignKey('event.id'), primary_key=True)
-    master_event_id = Column(ForeignKey('event.id'))
-    master_event_uid = Column(String(767, collation='ascii_general_ci'))
-    original_start_time = Column(DateTime)
-
-    master = relationship(RecurringEvent, foreign_keys=[master_event_id],
-                          backref=backref('overrides', lazy="dynamic"))
-
     __mapper_args__ = {'polymorphic_identity': 'recurringeventoverride',
                        'inherit_condition': (id == Event.id)}
     __table_args__ = None
+
+    master_event_id = Column(ForeignKey('event.id'))
+    master_event_uid = Column(String(767, collation='ascii_general_ci'))
+    original_start_time = Column(FlexibleDateTime)
+
+    master = relationship(RecurringEvent, foreign_keys=[master_event_id],
+                          backref=backref('overrides', lazy="dynamic"))
 
     def update(self, event):
         super(RecurringEventOverride, self).update(event)
@@ -251,7 +283,7 @@ class InflatedEvent(Event):
     # NOTE: This is a transient object that should never be committed to the
     # database (it's generated when a recurring event is expanded).
     # Correspondingly, there doesn't need to be a table for this object,
-    # however we have to behave as if there is, so it behaves like an Event.
+    # however we have to pretend there is, so it behaves like an Event.
     # TODO: I don't like this that much.
     __mapper_args__ = {'polymorphic_identity': 'inflatedevent'}
     __tablename__ = 'event'

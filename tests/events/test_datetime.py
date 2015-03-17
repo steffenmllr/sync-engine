@@ -2,7 +2,7 @@ import arrow
 from datetime import timedelta
 
 from inbox.models.when import Time, TimeSpan, Date, DateSpan, parse_as_when
-from inbox.events.util import google_to_event_time, google_time
+from inbox.events.util import google_to_event_time, parse_google_time
 
 
 def test_when_time():
@@ -40,8 +40,8 @@ def test_when_date():
     date = {'date': start_date.format('YYYY-MM-DD')}
     ts = parse_as_when(date)
     assert isinstance(ts, Date)
-    assert ts.start == start_date.date()
-    assert ts.end == start_date.date()
+    assert ts.start == start_date
+    assert ts.end == start_date
     assert not ts.spanning
     assert ts.all_day
     assert not ts.is_time
@@ -56,8 +56,8 @@ def test_when_datespan():
                 'end_date': end_date.format('YYYY-MM-DD')}
     ts = parse_as_when(datespan)
     assert isinstance(ts, DateSpan)
-    assert ts.start == start_date.date()
-    assert ts.end == end_date.date()
+    assert ts.start == start_date
+    assert ts.end == end_date
     assert ts.spanning
     assert ts.all_day
     assert not ts.is_time
@@ -82,18 +82,18 @@ def test_when_spans_arent_spans():
     assert isinstance(ts, Time)
 
 
-def test_google_time():
+def test_parse_google_time():
     t = {'dateTime': '2012-10-15T17:00:00-07:00',
          'timeZone': 'America/Los_Angeles'}
-    gt = google_time(t)
+    gt = parse_google_time(t)
     assert gt.to('utc') == arrow.get(2012, 10, 16, 00, 00, 00)
 
     t = {'dateTime': '2012-10-15T13:00:00+01:00'}
-    gt = google_time(t)
+    gt = parse_google_time(t)
     assert gt.to('utc') == arrow.get(2012, 10, 15, 12, 00, 00)
 
     t = {'date': '2012-10-15'}
-    gt = google_time(t)
+    gt = parse_google_time(t)
     assert gt == arrow.get(2012, 10, 15)
 
 
@@ -110,6 +110,6 @@ def test_google_to_event_time():
     start = {'date': '2012-10-15'}
     end = {'date': '2012-10-16'}
     event_time = google_to_event_time(start, end)
-    assert event_time.start == arrow.get(2012, 10, 15).date()
-    assert event_time.end == arrow.get(2012, 10, 15).date()
+    assert event_time.start == arrow.get(2012, 10, 15)
+    assert event_time.end == arrow.get(2012, 10, 15)
     assert event_time.all_day is True

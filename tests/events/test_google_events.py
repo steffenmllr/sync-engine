@@ -1,9 +1,10 @@
-from datetime import datetime
+import arrow
 import json
 import mock
 import requests
-from inbox.events.google import GoogleEventsProvider
+from inbox.events.google import GoogleEventsProvider, parse_event_response
 from inbox.models import Calendar, Event
+from inbox.models.event import RecurringEvent, RecurringEventOverride
 
 
 def cmp_cal_attrs(calendar1, calendar2):
@@ -174,33 +175,33 @@ def test_event_parsing():
     ]
     expected_deletes = ['3uisajkmdjqo43tfc3ig1l5hek']
     expected_updates = [
-        Event(uid='tn7krk4cekt8ag3pk6gapqqbro',
-              title='BOD Meeting',
-              description=None,
-              read_only=False,
-              start=datetime(2012, 10, 16, 0, 0, 0),
-              end=datetime(2012, 10, 16, 1, 0, 0),
-              all_day=False,
-              busy=True,
-              owner='Eben Freeman <freemaneben@gmail.com>',
-              recurrence="['RRULE:FREQ=WEEKLY;UNTIL=20150209T075959Z;BYDAY=MO']",
-              participants=[
-                  {'email': 'mitoc-bod@mit.edu',
-                   'name': 'MITOC BOD',
-                   'status': 'yes',
-                   'notes': None},
-                  {'email': 'freemaneben@gmail.com',
-                   'name': 'Eben Freeman',
-                   'status': 'yes',
-                   'notes': None}
-              ]),
+        RecurringEvent(uid='tn7krk4cekt8ag3pk6gapqqbro',
+                       title='BOD Meeting',
+                       description=None,
+                       read_only=False,
+                       start=arrow.get(2012, 10, 16, 0, 0, 0),
+                       end=arrow.get(2012, 10, 16, 1, 0, 0),
+                       all_day=False,
+                       busy=True,
+                       owner='Eben Freeman <freemaneben@gmail.com>',
+                       recurrence="['RRULE:FREQ=WEEKLY;UNTIL=20150209T075959Z;BYDAY=MO']",
+                       participants=[
+                           {'email': 'mitoc-bod@mit.edu',
+                            'name': 'MITOC BOD',
+                            'status': 'yes',
+                            'notes': None},
+                           {'email': 'freemaneben@gmail.com',
+                            'name': 'Eben Freeman',
+                            'status': 'yes',
+                            'notes': None}
+                       ]),
         Event(uid='20140615_60o30dr564o30c1g60o30dr4ck',
               title="Fathers' Day",
               description=None,
               read_only=False,
               busy=False,
-              start=datetime(2014, 06, 15),
-              end=datetime(2014, 06, 15),
+              start=arrow.get(2014, 06, 15),
+              end=arrow.get(2014, 06, 15),
               all_day=True,
               owner='Holidays in United States <en.usa#holiday@group.v.calendar.google.com>',
               participants=[])
@@ -233,3 +234,94 @@ def test_pagination():
     provider._get_access_token = mock.Mock(return_value='token')
     items = provider._get_resource_list('https://googleapis.com/testurl')
     assert items == ['A', 'B', 'C', 'D', 'E']
+
+
+def test_recurrence_creation():
+    raw_response = {
+        'created': '2012-10-09T22:35:50.000Z',
+        'creator': {
+            'displayName': 'Eben Freeman',
+            'email': 'freemaneben@gmail.com',
+            'self': True
+        },
+        'end': {'dateTime': '2012-10-15T18:00:00-07:00'},
+        'etag': '"2806773858144000"',
+        'htmlLink': 'https://www.google.com/calendar/event?eid=FOO',
+        'iCalUID': 'tn7krk4cekt8ag3pk6gapqqbro@google.com',
+        'id': 'tn7krk4cekt8ag3pk6gapqqbro',
+        'kind': 'calendar#event',
+        'organizer': {
+            'displayName': 'Eben Freeman',
+            'email': 'freemaneben@gmail.com',
+            'self': True
+        },
+        'attendees': [
+            {'displayName': 'MITOC BOD',
+             'email': 'mitoc-bod@mit.edu',
+             'responseStatus': 'accepted'},
+            {'displayName': 'Eben Freeman',
+             'email': 'freemaneben@gmail.com',
+             'responseStatus': 'accepted'}
+        ],
+        'reminders': {'useDefault': True},
+        'recurrence': ['RRULE:FREQ=WEEKLY;UNTIL=20150209T075959Z;BYDAY=MO',
+                       'EXDATE;TZID=America/Los_Angeles:20150208T010000'],
+        'sequence': 0,
+        'start': {'dateTime': '2012-10-15T17:00:00-07:00',
+                  'timeZone': 'America/Los_Angeles'},
+        'status': 'confirmed',
+        'summary': 'BOD Meeting',
+        'updated': '2014-06-21T21:42:09.072Z'
+    }
+    event = parse_event_response(raw_response)
+    assert isinstance(event, RecurringEvent)
+    assert event.rrule == 'RRULE:FREQ=WEEKLY;UNTIL=20150209T075959Z;BYDAY=MO'
+    assert event.exdate == 'EXDATE;TZID=America/Los_Angeles:20150208T010000'
+    assert event.until == arrow.get(2015, 02, 9, 7, 59, 59)
+    assert event.start_timezone == 'America/Los_Angeles'
+
+
+def test_override_creation():
+    raw_response = {
+        'created': '2012-10-09T22:35:50.000Z',
+        'creator': {
+            'displayName': 'Eben Freeman',
+            'email': 'freemaneben@gmail.com',
+            'self': True
+        },
+        'end': {'dateTime': '2012-10-22T19:00:00-07:00'},
+        'etag': '"2806773858144000"',
+        'htmlLink': 'https://www.google.com/calendar/event?eid=FOO',
+        'iCalUID': 'tn7krk4cekt8ag3pk6gapqqbro@google.com',
+        'id': 'tn7krk4cekt8ag3pk6gapqqbro_20121022T170000Z',
+        'kind': 'calendar#event',
+        'organizer': {
+            'displayName': 'Eben Freeman',
+            'email': 'freemaneben@gmail.com',
+            'self': True
+        },
+        'attendees': [
+            {'displayName': 'MITOC BOD',
+             'email': 'mitoc-bod@mit.edu',
+             'responseStatus': 'accepted'},
+            {'displayName': 'Eben Freeman',
+             'email': 'freemaneben@gmail.com',
+             'responseStatus': 'accepted'}
+        ],
+        'originalStartTime': {
+            'dateTime': '2012-10-22T17:00:00-07:00',
+            'timeZone': 'America/Los_Angeles'
+        },
+        'recurringEventId': 'tn7krk4cekt8ag3pk6gapqqbro',
+        'reminders': {'useDefault': True},
+        'sequence': 0,
+        'start': {'dateTime': '2012-10-22T18:00:00-07:00',
+                  'timeZone': 'America/Los_Angeles'},
+        'status': 'confirmed',
+        'summary': 'BOD Meeting',
+        'updated': '2014-06-21T21:42:09.072Z'
+    }
+    event = parse_event_response(raw_response)
+    assert isinstance(event, RecurringEventOverride)
+    assert event.master_event_uid == 'tn7krk4cekt8ag3pk6gapqqbro'
+    assert event.original_start_time == arrow.get(2012, 10, 23, 00, 00, 00)

@@ -1,13 +1,14 @@
 from datetime import datetime
 from dateutil.parser import parse as date_parse
 from dateutil import tz
-from dateutil.rrule import rrulestr, rrule, rruleset, MO, TU, WE, TH, FR, SA, SU
+from dateutil.rrule import (rrulestr, rrule, rruleset,
+                            MO, TU, WE, TH, FR, SA, SU)
 
 from inbox.models.event import (RecurringEvent, RecurringEventOverride,
                                 InflatedEvent)
 
-# How far in the future to unfold recurring events
-FUTURE_RECURRENCE_YEARS = 1
+# How far in the future to expand recurring events
+EXPAND_RECURRING_YEARS = 1
 
 
 def link_events(db_session, event):
@@ -92,7 +93,7 @@ def get_start_times(event, start=None, end=None):
         if not end:
             end = datetime.utcnow()
             # Check this works with Feb 29
-            end = end.replace(year=end.year + FUTURE_RECURRENCE_YEARS)
+            end = end.replace(year=end.year + EXPAND_RECURRING_YEARS)
         end = end.replace(tzinfo=tz.tzutc())
 
         excl_dates = parse_exdate(event)

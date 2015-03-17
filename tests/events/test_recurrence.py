@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from inbox.events.recurring import (link_events, get_start_times,
                                     parse_exdate, rrule_to_json)
-from inbox.models.event import (Event, RecurringEvent, RecurringEventOverride)
+from inbox.models.event import Event, RecurringEvent, RecurringEventOverride
 from inbox.models.when import Date, Time, DateSpan, TimeSpan
 
 
@@ -17,27 +17,29 @@ TEST_EXDATE_RULE.extend(TEST_EXDATE)
 
 def recurring_event(db, account, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
                     end=datetime(2014, 8, 7, 21, 30, 00)):
-    ev = db.session.query(RecurringEvent).filter_by(uid='myuid').first()
+    ev = db.session.query(Event).filter_by(uid='myuid').first()
     if ev:
         db.session.delete(ev)
     cal = account.default_calendar
-    ev = RecurringEvent(namespace_id=account.namespace.id,
-                        calendar=cal,
-                        title='recurring',
-                        description='',
-                        uid='myuid',
-                        location='',
-                        busy=False,
-                        read_only=False,
-                        reminders='',
-                        recurrence=str(rrule),
-                        start=start,
-                        end=end,
-                        all_day=False,
-                        provider_name='inbox',
-                        raw_data='',
-                        original_start_tz='America/Los_Angeles',
-                        source='local')
+    ev = Event(namespace_id=account.namespace.id,
+               calendar=cal,
+               title='recurring',
+               description='',
+               uid='myuid',
+               location='',
+               busy=False,
+               read_only=False,
+               reminders='',
+               recurrence=rrule,
+               start=start,
+               end=end,
+               all_day=False,
+               provider_name='inbox',
+               raw_data='',
+               original_start_tz='America/Los_Angeles',
+               original_start_time=None,
+               master_event_uid=None,
+               source='local')
     db.session.add(ev)
     db.session.commit()
     return ev
@@ -46,15 +48,14 @@ def recurring_event(db, account, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
 def recurring_override(db, master, original_start, start, end):
     override_uid = '{}_{}'.format(master.uid,
                                   original_start.strftime("%Y%m%dT%H%M%SZ"))
-    ev = db.session.query(RecurringEventOverride).\
-        filter_by(uid=override_uid).first()
+    ev = db.session.query(Event).filter_by(uid=override_uid).first()
     if ev:
         db.session.delete(ev)
     db.session.commit()
-    ev = RecurringEventOverride(original_start_time=original_start,
-                                master_event_uid=master.uid,
-                                namespace_id=master.namespace_id,
-                                calendar_id=master.calendar_id)
+    ev = Event(original_start_time=original_start,
+               master_event_uid=master.uid,
+               namespace_id=master.namespace_id,
+               calendar_id=master.calendar_id)
     ev.update(master)
     ev.uid = override_uid
     # This is populated from the {recurringEventId, original_start_time} data
@@ -75,6 +76,7 @@ def utcdate(*args):
 def test_create_recurrence(db, default_account):
     # TODO update with emfree's new tests
     event = recurring_event(db, default_account, TEST_EXDATE_RULE)
+    assert isinstance(event, RecurringEvent)
     assert event.rrule is not None
     assert event.exdate is not None
     assert event.until is not None
@@ -85,10 +87,11 @@ def test_link_events(db, default_account):
     # can link them together based on UID and namespace_id
     master = recurring_event(db, default_account, TEST_EXDATE_RULE)
     original_start = parse_exdate(master)[0]
-    override = RecurringEventOverride(original_start_time=original_start,
-                                      master_event_uid=master.uid,
-                                      namespace_id=master.namespace_id,
-                                      source='local')
+    override = Event(original_start_time=original_start,
+                     master_event_uid=master.uid,
+                     namespace_id=master.namespace_id,
+                     source='local')
+    assert isinstance(override, RecurringEventOverride)
     link_events(db.session, override)
     assert override.master == master
 
