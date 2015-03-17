@@ -2,6 +2,7 @@ import arrow
 from datetime import timedelta
 
 from inbox.models.when import Time, TimeSpan, Date, DateSpan, parse_as_when
+from inbox.events.util import google_to_event_time, google_time
 
 
 def test_when_time():
@@ -79,3 +80,36 @@ def test_when_spans_arent_spans():
                 'end_time': end_time.timestamp}
     ts = parse_as_when(timespan)
     assert isinstance(ts, Time)
+
+
+def test_google_time():
+    t = {'dateTime': '2012-10-15T17:00:00-07:00',
+         'timeZone': 'America/Los_Angeles'}
+    gt = google_time(t)
+    assert gt.to('utc') == arrow.get(2012, 10, 16, 00, 00, 00)
+
+    t = {'dateTime': '2012-10-15T13:00:00+01:00'}
+    gt = google_time(t)
+    assert gt.to('utc') == arrow.get(2012, 10, 15, 12, 00, 00)
+
+    t = {'date': '2012-10-15'}
+    gt = google_time(t)
+    assert gt == arrow.get(2012, 10, 15)
+
+
+def test_google_to_event_time():
+    start = {'dateTime': '2012-10-15T17:00:00-07:00',
+             'timeZone': 'America/Los_Angeles'}
+    end = {'dateTime': '2012-10-15T17:25:00-07:00',
+           'timeZone': 'America/Los_Angeles'}
+    event_time = google_to_event_time(start, end)
+    assert event_time.start == arrow.get(2012, 10, 16, 00, 00, 00)
+    assert event_time.end == arrow.get(2012, 10, 16, 00, 25, 00)
+    assert event_time.all_day is False
+
+    start = {'date': '2012-10-15'}
+    end = {'date': '2012-10-16'}
+    event_time = google_to_event_time(start, end)
+    assert event_time.start == arrow.get(2012, 10, 15).date()
+    assert event_time.end == arrow.get(2012, 10, 15).date()
+    assert event_time.all_day is True
