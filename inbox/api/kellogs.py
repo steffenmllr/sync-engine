@@ -1,3 +1,4 @@
+import arrow
 import datetime
 import calendar
 from json import JSONEncoder, dumps
@@ -57,6 +58,9 @@ def encode(obj, namespace_public_id=None):
     # objects.
     if isinstance(obj, datetime.datetime):
         return calendar.timegm(obj.utctimetuple())
+
+    if isinstance(obj, arrow.arrow.Arrow):
+        return encode(obj.datetime)
 
     elif isinstance(obj, Namespace):
         return {
@@ -157,14 +161,14 @@ def encode(obj, namespace_public_id=None):
     elif isinstance(obj, Time):
         return {
             'object': 'time',
-            'time': obj.time
+            'time': encode(obj.time)
         }
 
     elif isinstance(obj, TimeSpan):
         return {
             'object': 'timespan',
-            'start_time': obj.start_time,
-            'end_time': obj.end_time
+            'start_time': encode(obj.start_time),
+            'end_time': encode(obj.end_time)
         }
 
     elif isinstance(obj, Date):

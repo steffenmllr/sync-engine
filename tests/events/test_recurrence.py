@@ -1,4 +1,5 @@
 import pytest
+import arrow
 from dateutil import tz
 from dateutil.rrule import rrulestr
 from datetime import datetime, timedelta
@@ -15,8 +16,9 @@ TEST_EXDATE_RULE = TEST_RRULE[:]
 TEST_EXDATE_RULE.extend(TEST_EXDATE)
 
 
-def recurring_event(db, account, rrule, start=datetime(2014, 8, 7, 20, 30, 00),
-                    end=datetime(2014, 8, 7, 21, 30, 00)):
+def recurring_event(db, account, rrule,
+                    start=arrow.get(2014, 8, 7, 20, 30, 00),
+                    end=arrow.get(2014, 8, 7, 21, 30, 00)):
     ev = db.session.query(Event).filter_by(uid='myuid').first()
     if ev:
         db.session.delete(ev)
@@ -58,8 +60,6 @@ def recurring_override(db, master, original_start, start, end):
                calendar_id=master.calendar_id)
     ev.update(master)
     ev.uid = override_uid
-    # This is populated from the {recurringEventId, original_start_time} data
-    # TODO - maybe use that + linking logic here
     ev.start = start
     ev.end = end
     ev.master = master
@@ -69,12 +69,7 @@ def recurring_override(db, master, original_start, start, end):
     return ev
 
 
-def utcdate(*args):
-    return datetime(*args, tzinfo=tz.gettz('UTC'))
-
-
 def test_create_recurrence(db, default_account):
-    # TODO update with emfree's new tests
     event = recurring_event(db, default_account, TEST_EXDATE_RULE)
     assert isinstance(event, RecurringEvent)
     assert event.rrule is not None
@@ -102,8 +97,10 @@ def test_rrule_parsing(db, default_account):
     # There should be 7 total occurrences including Aug 7 and Sept 18.
     event = recurring_event(db, default_account, TEST_RRULE)
     g = get_start_times(event)
-    print g
     assert len(g) == 7
+    # Check we can supply an end date to cut off recurrence expansion
+    g = get_start_times(event, end=arrow.get(2014, 9, 12, 21, 30, 00))
+    assert len(g) == 6
 
 
 def test_rrule_exceptions(db, default_account):
@@ -113,7 +110,7 @@ def test_rrule_exceptions(db, default_account):
     g = get_start_times(event)
     print g
     assert len(g) == 6
-    assert utcdate(2014, 9, 4, 13, 30, 00) not in g
+    assert arrow.get(2014, 9, 4, 13, 30, 00) not in g
 
 
 def test_inflation(db, default_account):
@@ -132,7 +129,7 @@ def test_inflation_exceptions(db, default_account):
         print 'Event {}: {} - {}'.format(i.uid, i.start, i.end)
         assert i.title == event.title
         assert (i.end - i.start) == (event.end - event.start)
-        assert i.start != datetime(2014, 9, 4, 13, 30, 00)
+        assert i.start != arrow.get(2014, 9, 4, 13, 30, 00)
 
 
 def test_inflate_across_DST(db, default_account):
@@ -141,9 +138,10 @@ def test_inflate_across_DST(db, default_account):
     # Daylight Savings for US/PST: March 8, 2015 - Nov 1, 2015
     dst_rrule = ["RRULE:FREQ=WEEKLY;BYDAY=TU"]
     dst_event = recurring_event(db, default_account, dst_rrule,
-                                start=datetime(2015, 03, 03, 03, 03, 03),
-                                end=datetime(2015, 03, 03, 04, 03, 03))
-    g = get_start_times(dst_event, end=datetime(2015, 03, 21))
+                                start=arrow.get(2015, 03, 03, 03, 03, 03),
+                                end=arrow.get(2015, 03, 03, 04, 03, 03))
+    g = get_start_times(dst_event, end=arrow.get(2015, 03, 21))
+
     # In order for this event to occur at the same local time, the recurrence
     # rule should be expanded to 03:03:03 before March 8, and 02:03:03 after,
     # keeping the local time of the event consistent at 19:03.
@@ -160,11 +158,11 @@ def test_inflate_across_DST(db, default_account):
 
     # Test an event that starts during local daylight savings time
     dst_event = recurring_event(db, default_account, dst_rrule,
-                                start=datetime(2015, 10, 27, 02, 03, 03),
-                                end=datetime(2015, 10, 27, 03, 03, 03))
-    g = get_start_times(dst_event, end=datetime(2015, 11, 11))
+                                start=arrow.get(2015, 10, 27, 02, 03, 03),
+                                end=arrow.get(2015, 10, 27, 03, 03, 03))
+    g = get_start_times(dst_event, end=arrow.get(2015, 11, 11))
     for time in g:
-        if time > datetime(2015, 11, 1, tzinfo=tz.tzutc()):
+        if time > arrow.get(2015, 11, 1):
             assert time.hour == 3
         else:
             assert time.hour == 2
@@ -212,9 +210,9 @@ def test_override_instantiated(db, default_account):
     # appear twice in the event list.
     event = recurring_event(db, default_account, TEST_EXDATE_RULE)
     override = recurring_override(db, event,
-                                  datetime(2014, 9, 4, 20, 30, 00),
-                                  datetime(2014, 9, 4, 21, 30, 00),
-                                  datetime(2014, 9, 4, 22, 30, 00))
+                                  arrow.get(2014, 9, 4, 20, 30, 00),
+                                  arrow.get(2014, 9, 4, 21, 30, 00),
+                                  arrow.get(2014, 9, 4, 22, 30, 00))
     # TODO - We should also test the creation process (init populates)
     all_events = event.all_events()
     assert len(all_events) == 7
@@ -227,9 +225,9 @@ def test_override_same_start(db, default_account):
     # appear twice in the all_events list.
     event = recurring_event(db, default_account, TEST_RRULE)
     override = recurring_override(db, event,
-                                  datetime(2014, 9, 4, 20, 30, 00),
-                                  datetime(2014, 9, 4, 20, 30, 00),
-                                  datetime(2014, 9, 4, 21, 30, 00))
+                                  arrow.get(2014, 9, 4, 20, 30, 00),
+                                  arrow.get(2014, 9, 4, 20, 30, 00),
+                                  arrow.get(2014, 9, 4, 21, 30, 00))
     all_events = event.all_events()
     assert len(all_events) == 7
     unique_starts = list(set([e.start for e in all_events]))
@@ -298,7 +296,7 @@ def test_rrule_to_json():
     assert j.get('freq') == 'WEEKLY'
     assert j.get('byweekday') == 'TH'
 
-    r = 'FREQ=HOURLY;COUNT=30;WKST=MO;BYMONTH=1;BYMINUTE=4,2;BYSECOND=4,2'
+    r = 'FREQ=HOURLY;COUNT=30;WKST=MO;BYMONTH=1;BYMINUTE=42;BYSECOND=24'
     r = rrulestr(r, dtstart=None)
     j = rrule_to_json(r)
     assert j.get('until') is None

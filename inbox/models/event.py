@@ -41,6 +41,12 @@ class FlexibleDateTime(TypeDecorator):
             value = value.to('utc').naive
         return value
 
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            return arrow.get(value)
+
 
 class Event(MailSyncBase, HasRevisions, HasPublicID):
     """Data for events."""
@@ -259,7 +265,7 @@ class RecurringEvent(Event):
 
 class RecurringEventOverride(Event):
     API_OBJECT_NAME = 'event_override'
-
+    # TODO - DELETE CASCADES ! ##
     id = Column(Integer, ForeignKey('event.id'), primary_key=True)
     __mapper_args__ = {'polymorphic_identity': 'recurringeventoverride',
                        'inherit_condition': (id == Event.id)}

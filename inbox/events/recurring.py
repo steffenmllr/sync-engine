@@ -1,4 +1,4 @@
-from datetime import datetime
+import arrow
 from dateutil.parser import parse as date_parse
 from dateutil import tz
 from dateutil.rrule import (rrulestr, rrule, rruleset,
@@ -53,16 +53,16 @@ def link_master(db_session, event):
 def parse_rrule(event):
     # Parse the RRULE string and return a dateutil.rrule.rrule object
     if event.rrule is not None:
-        start = event.start.replace(tzinfo=tz.tzutc())
+        start = event.start
         # TODO: Deal with things that don't parse here.
-        rrule = rrulestr(event.rrule, dtstart=start, compatible=True)
+        rrule = rrulestr(event.rrule, dtstart=start.datetime, compatible=True)
         return rrule
     else:
         print 'Warning tried to parse null RRULE for event {}'.format(event.id)
 
 
 def parse_exdate(event):
-    # Parse the EXDATE string and return a list of datetimes
+    # Parse the EXDATE string and return a list of arrow datetimes
     excl_dates = []
     if event.exdate:
         name, values = event.exdate.split(':', 1)
@@ -79,22 +79,19 @@ def parse_exdate(event):
 
 
 def get_start_times(event, start=None, end=None):
-    # Expands the rrule on event to return a list of datetimes representing
-    # start times for its recurring instances.
-    # If start and/or end are supplied, will return times within that range.
+    # Expands the rrule on event to return a list of arrow datetimes
+    # representing start times for its recurring instances.
+    # If start and/or end are supplied, will return times within that range,
+    # otherwise defaults to the event start date and now + 1 year
 
-    # Note that rrule expansion returns timezone-aware datetimes.
     if isinstance(event, RecurringEvent):
+        # Localize first so that expansion covers DST
+        event.start = event.start.to(event.start_timezone)
+
         if not start:
             start = event.start
-        # rrule requires timezone-aware datetimes
-        start = start.replace(tzinfo=tz.tzutc())
-
         if not end:
-            end = datetime.utcnow()
-            # Check this works with Feb 29
-            end = end.replace(year=end.year + EXPAND_RECURRING_YEARS)
-        end = end.replace(tzinfo=tz.tzutc())
+            end = arrow.utcnow().replace(years=+EXPAND_RECURRING_YEARS)
 
         excl_dates = parse_exdate(event)
         rrules = parse_rrule(event)
@@ -104,28 +101,12 @@ def get_start_times(event, start=None, end=None):
                 rrules = rruleset().rrule(rrules)
             map(rrules.exdate, excl_dates)
 
-        # Needs more timezone testing
         # Return all start times between start and end, including start and
         # end themselves if they obey the rule.
         start_times = rrules.between(start, end, inc=True)
 
-        # Localize to the event's timezone to account for DST
-        # (an event starting at 9:30 local time should continue to start at
-        # 9:30 after a DST switch, so the UTC time needs to change)
-
-        if event.start_timezone:
-            master_tz = tz.gettz(event.start_timezone)
-
-            def adjust_dst(t):
-                # Adjust the time t by DST offset if not in same DST period
-                # as the original start
-                master_offset = master_tz.dst(event.start)
-                t_offset = master_tz.dst(t)
-                if master_offset != t_offset:
-                    t += master_offset - t_offset
-                return t
-
-            start_times = map(adjust_dst, start_times)
+        # Convert back to UTC
+        start_times = [arrow.get(t).to('utc') for t in start_times]
 
         return start_times
 
@@ -157,8 +138,6 @@ def rrule_to_json(r):
         else:
             continue
         if fieldname.startswith('by') and value is not None:
-            if isinstance(value, tuple) and len(value) > 0:
-                value = int(''.join([str(v) for v in value]))
             if fieldname == 'byweekday':
                 value = str(weekday_map[value])
             j[fieldname] = value

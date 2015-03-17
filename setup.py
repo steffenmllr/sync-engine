@@ -25,7 +25,7 @@ setup(
         "elasticsearch>=1.2.0",
         "setproctitle>=1.1.8",
         "pymongo>=2.5.2",
-        "python-dateutil>=2.3",
+        "python-dateutil>=2.4",
         "ipython>=1.0.0",
         "enum34==1.0.4",
         "gdata>=2.0.18",
