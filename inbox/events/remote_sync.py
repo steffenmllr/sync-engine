@@ -131,6 +131,9 @@ def handle_event_deletes(namespace_id, calendar_id, deleted_event_uids,
             Event.uid == uid,
             Event.calendar_id == calendar_id).first()
         if local_event is not None:
+            # Delete stored overrides for this event too, if it is recurring
+            if isinstance(local_event, RecurringEvent):
+                deleted_event_uids.extend(list(local_event.override_uids))
             deleted_count += 1
             db_session.delete(local_event)
     log.info('synced deleted events',

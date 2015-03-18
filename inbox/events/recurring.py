@@ -6,6 +6,9 @@ from inbox.models.event import (RecurringEvent, RecurringEventOverride,
                                 InflatedEvent)
 from inbox.events.util import parse_rrule_datetime
 
+from inbox.log import get_logger
+log = get_logger()
+
 # How far in the future to expand recurring events
 EXPAND_RECURRING_YEARS = 1
 
@@ -29,7 +32,7 @@ def link_overrides(db_session, event):
     for o in overrides:
         if not o.master:
             o.master = event
-    return overrides  # TODO check this is the dirty set
+    return overrides
 
 
 def link_master(db_session, event):
@@ -51,10 +54,17 @@ def link_master(db_session, event):
 def parse_rrule(event):
     # Parse the RRULE string and return a dateutil.rrule.rrule object
     if event.rrule is not None:
-        start = event.start
-        # TODO: Deal with things that don't parse here.
-        rrule = rrulestr(event.rrule, dtstart=start.datetime, compatible=True)
-        return rrule
+        if event.all_day:
+            start = event.start.to('utc').naive
+        else:
+            start = event.start.datetime
+        try:
+            rrule = rrulestr(event.rrule, dtstart=start,
+                             compatible=True)
+            return rrule
+        except Exception as e:
+            log.error("Error parsing RRULE entry", event_id=event.id,
+                      error=e, exc_info=True)
 
 
 def parse_exdate(event):
@@ -82,15 +92,21 @@ def get_start_times(event, start=None, end=None):
 
     if isinstance(event, RecurringEvent):
         # Localize first so that expansion covers DST
-        event.start = event.start.to(event.start_timezone)
+        if event.start_timezone:
+            event.start = event.start.to(event.start_timezone)
 
         if not start:
             start = event.start
         if not end:
             end = arrow.utcnow().replace(years=+EXPAND_RECURRING_YEARS)
 
-        excl_dates = parse_exdate(event)
         rrules = parse_rrule(event)
+        if not rrules:
+            log.warn('Tried to expand a non-recurring event',
+                     event_id=event.id)
+            return [event.start]
+
+        excl_dates = parse_exdate(event)
 
         if len(excl_dates) > 0:
             if not isinstance(rrules, rruleset):
@@ -99,6 +115,12 @@ def get_start_times(event, start=None, end=None):
 
         # Return all start times between start and end, including start and
         # end themselves if they obey the rule.
+        if event.all_day:
+            # compare naive times, since date handling in rrulestr is naive
+            # when UNTIL takes the form YYYYMMDD
+            start = start.to('utc').naive
+            end = end.to('utc').naive
+
         start_times = rrules.between(start, end, inc=True)
 
         # Convert back to UTC, which covers daylight savings differences

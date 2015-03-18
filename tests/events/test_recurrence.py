@@ -3,22 +3,26 @@ import arrow
 from dateutil import tz
 from dateutil.rrule import rrulestr
 from datetime import datetime, timedelta
-
-from inbox.events.recurring import (link_events, get_start_times,
-                                    parse_exdate, rrule_to_json)
 from inbox.models.event import Event, RecurringEvent, RecurringEventOverride
 from inbox.models.when import Date, Time, DateSpan, TimeSpan
+from inbox.events.remote_sync import handle_event_updates, handle_event_deletes
+from inbox.events.recurring import (link_events, get_start_times,
+                                    parse_exdate, rrule_to_json)
 
+from inbox.log import get_logger
+log = get_logger()
 
 TEST_RRULE = ["RRULE:FREQ=WEEKLY;UNTIL=20140918T203000Z;BYDAY=TH"]
 TEST_EXDATE = ["EXDATE;TZID=America/Los_Angeles:20140904T133000"]
+ALL_DAY_RRULE = ["RRULE:FREQ=WEEKLY;UNTIL=20140911;BYDAY=TH"]
 TEST_EXDATE_RULE = TEST_RRULE[:]
 TEST_EXDATE_RULE.extend(TEST_EXDATE)
 
 
 def recurring_event(db, account, rrule,
                     start=arrow.get(2014, 8, 7, 20, 30, 00),
-                    end=arrow.get(2014, 8, 7, 21, 30, 00)):
+                    end=arrow.get(2014, 8, 7, 21, 30, 00),
+                    all_day=False):
     ev = db.session.query(Event).filter_by(uid='myuid').first()
     if ev:
         db.session.delete(ev)
@@ -35,7 +39,9 @@ def recurring_event(db, account, rrule,
                recurrence=rrule,
                start=start,
                end=end,
-               all_day=False,
+               all_day=all_day,
+               is_owner=False,
+               participants=[],
                provider_name='inbox',
                raw_data='',
                original_start_tz='America/Los_Angeles',
@@ -103,12 +109,20 @@ def test_rrule_parsing(db, default_account):
     assert len(g) == 6
 
 
+def test_all_day_rrule_parsing(db, default_account):
+    event = recurring_event(db, default_account, ALL_DAY_RRULE,
+                            start=arrow.get(2014, 8, 7),
+                            end=arrow.get(2014, 8, 7),
+                            all_day=True)
+    g = get_start_times(event)
+    assert len(g) == 6
+
+
 def test_rrule_exceptions(db, default_account):
     # This test event starts on Aug 7 and recurs every Thursday at 20:30
     # until Sept 18, except on September 4.
     event = recurring_event(db, default_account, TEST_EXDATE_RULE)
     g = get_start_times(event)
-    print g
     assert len(g) == 6
     assert arrow.get(2014, 9, 4, 13, 30, 00) not in g
 
@@ -117,16 +131,17 @@ def test_inflation(db, default_account):
     event = recurring_event(db, default_account, TEST_RRULE)
     infl = event.inflate()
     for i in infl:
-        print 'Event {}: {} - {}'.format(i.uid, i.start, i.end)
         assert i.title == event.title
         assert (i.end - i.start) == (event.end - event.start)
+        assert i.public_id.startswith(event.public_id)
+    # make sure the original event instance appears too
+    assert event.start in [e.start for e in infl]
 
 
 def test_inflation_exceptions(db, default_account):
     event = recurring_event(db, default_account, TEST_RRULE)
     infl = event.inflate()
     for i in infl:
-        print 'Event {}: {} - {}'.format(i.uid, i.start, i.end)
         assert i.title == event.title
         assert (i.end - i.start) == (event.end - event.start)
         assert i.start != arrow.get(2014, 9, 4, 13, 30, 00)
@@ -168,24 +183,72 @@ def test_inflate_across_DST(db, default_account):
             assert time.hour == 2
         assert time.astimezone(local_tz).hour == 19
 
-# def test_nonstandard_rrule_entry(db, default_account):
-#     pass
+
+def test_inflate_all_day_event(db, default_account):
+    event = recurring_event(db, default_account, ALL_DAY_RRULE,
+                            start=arrow.get(2014, 9, 4),
+                            end=arrow.get(2014, 9, 4), all_day=True)
+    infl = event.inflate()
+    for i in infl:
+        assert i.all_day
+        assert isinstance(i.when, Date)
+        assert i.start in [arrow.get(2014, 9, 4), arrow.get(2014, 9, 11)]
 
 
-# def test_cant_inflate_non_recurring(db, default_account):
-#     pass
+def test_inflate_multi_day_event(db, default_account):
+    event = recurring_event(db, default_account, ALL_DAY_RRULE,
+                            start=arrow.get(2014, 9, 4),
+                            end=arrow.get(2014, 9, 5), all_day=True)
+    infl = event.inflate()
+    for i in infl:
+        assert i.all_day
+        assert isinstance(i.when, DateSpan)
+        assert i.start in [arrow.get(2014, 9, 4), arrow.get(2014, 9, 11)]
+        assert i.end in [arrow.get(2014, 9, 5), arrow.get(2014, 9, 12)]
 
 
-# def test_parent_appears_in_recurrences(db, default_account):
-#     pass
+def test_invalid_rrule_entry(db, default_account):
+    # If we don't know how to expand the RRULE, we treat the event as if
+    # it were a single instance.
+    event = recurring_event(db, default_account, 'INVALID_RRULE_YAY')
+    infl = event.inflate()
+    assert len(infl) == 1
+    assert infl[0].start == event.start
 
 
-# def test_timezones_with_rrules(db, default_account):
-#     pass
+def test_invalid_parseable_rrule_entry(db, default_account):
+    event = recurring_event(db, default_account,
+                            ["RRULE:FREQ=CHRISTMAS;UNTIL=1984;BYDAY=QQ"])
+    infl = event.inflate()
+    assert len(infl) == 1
+    assert infl[0].start == event.start
 
 
-# def test_ids_for_inflated_events(db, default_account):
-#     pass
+def test_non_recurring_events_behave(db, default_account):
+    event = Event(namespace_id=default_account.namespace.id,
+                  calendar=default_account.default_calendar,
+                  title='not recurring',
+                  description='',
+                  uid='non_recurring_uid',
+                  location='',
+                  busy=False,
+                  read_only=False,
+                  reminders='',
+                  recurrence=None,
+                  start=arrow.get(2014, 07, 07, 13, 30),
+                  end=arrow.get(2014, 07, 07, 13, 55),
+                  all_day=False,
+                  is_owner=False,
+                  participants=[],
+                  provider_name='inbox',
+                  raw_data='',
+                  original_start_tz='America/Los_Angeles',
+                  original_start_time=None,
+                  master_event_uid=None,
+                  source='local')
+    assert isinstance(event, Event)
+    with pytest.raises(AttributeError):
+        event.inflate()
 
 
 def test_inflated_events_cant_persist(db, default_account):
@@ -198,10 +261,6 @@ def test_inflated_events_cant_persist(db, default_account):
         # a test issue or fix.
         db.session.commit()
         assert 'should not be committed' in str(excinfo.value)
-
-
-# def test_all_day_recurrences(db, default_account):
-#     pass
 
 
 def test_override_instantiated(db, default_account):
@@ -235,10 +294,142 @@ def test_override_same_start(db, default_account):
 
 
 def test_override_updated(db, default_account):
-    # Test that when a recurring event override is created remotely, we
-    # update our EXDATE and links appropriately.
+    # Test that when a recurring event override is created or updated
+    # remotely, we update our override links appropriately.
     event = recurring_event(db, default_account, TEST_RRULE)
-    assert event is not None   # TODO: To be continued
+    assert event is not None
+    # create a new Event, as if we just got it from Google
+    master_uid = event.uid
+    override_uid = master_uid + "_20140814T203000Z"
+    override = Event(title='new override from google',
+                     description='',
+                     uid=override_uid,
+                     location='',
+                     busy=False,
+                     read_only=False,
+                     reminders='',
+                     recurrence=None,
+                     start=arrow.get(2014, 8, 14, 22, 30, 00),
+                     end=arrow.get(2014, 8, 14, 23, 30, 00),
+                     all_day=False,
+                     is_owner=False,
+                     participants=[],
+                     provider_name='inbox',
+                     raw_data='',
+                     original_start_tz='America/Los_Angeles',
+                     original_start_time=arrow.get(2014, 8, 14, 21, 30, 00),
+                     master_event_uid=master_uid,
+                     source='local')
+    handle_event_updates(default_account.namespace.id,
+                         default_account.default_calendar.id,
+                         [override],
+                         log,
+                         db.session)
+    db.session.commit()
+    # Lets see if the event got saved with the right info
+    find_override = db.session.query(Event).filter_by(uid=override_uid).one()
+    assert find_override is not None
+    assert find_override.master_event_id == event.id
+
+    # Update the same override, making sure we don't create two
+    override = Event(title='new override from google',
+                     description='',
+                     uid=override_uid,
+                     location='walk and talk',
+                     busy=False,
+                     read_only=False,
+                     reminders='',
+                     recurrence=None,
+                     start=arrow.get(2014, 8, 14, 22, 15, 00),
+                     end=arrow.get(2014, 8, 14, 23, 15, 00),
+                     all_day=False,
+                     is_owner=False,
+                     participants=[],
+                     provider_name='inbox',
+                     raw_data='',
+                     original_start_tz='America/Los_Angeles',
+                     original_start_time=arrow.get(2014, 8, 14, 21, 30, 00),
+                     master_event_uid=master_uid,
+                     source='local')
+    handle_event_updates(default_account.namespace.id,
+                         default_account.default_calendar.id,
+                         [override], log, db.session)
+    db.session.commit()
+    # Let's see if the event got saved with the right info
+    find_override = db.session.query(Event).filter_by(uid=override_uid).one()
+    assert find_override is not None
+    assert find_override.master_event_id == event.id
+    assert find_override.location == 'walk and talk'
+
+
+def test_override_cancelled(db, default_account):
+    # Test that overrides with status 'cancelled' are appropriately missing
+    # from the expanded event.
+    event = recurring_event(db, default_account, TEST_EXDATE_RULE)
+    override = recurring_override(db, event,
+                                  arrow.get(2014, 9, 4, 20, 30, 00),
+                                  arrow.get(2014, 9, 4, 21, 30, 00),
+                                  arrow.get(2014, 9, 4, 22, 30, 00))
+    override.cancelled = True
+    all_events = event.all_events()
+    assert len(all_events) == 6
+    assert override not in all_events
+    assert not any([e.start == arrow.get(2014, 9, 4, 20, 30, 00)
+                    for e in all_events])
+
+
+def test_new_instance_cancelled(db, default_account):
+    # Test that if we receive a cancelled override from Google, we save it
+    # as an override with cancelled status rather than deleting it.
+    event = recurring_event(db, default_account, TEST_EXDATE_RULE)
+    override_uid = event.uid + "_20140814T203000Z"
+    override = Event(title='CANCELLED',
+                     description='',
+                     uid=override_uid,
+                     location='',
+                     busy=False,
+                     read_only=False,
+                     reminders='',
+                     recurrence=None,
+                     start=arrow.get(2014, 8, 14, 22, 15, 00),
+                     end=arrow.get(2014, 8, 14, 23, 15, 00),
+                     all_day=False,
+                     is_owner=False,
+                     participants=[],
+                     provider_name='inbox',
+                     raw_data='',
+                     original_start_tz='America/Los_Angeles',
+                     original_start_time=arrow.get(2014, 8, 14, 21, 30, 00),
+                     master_event_uid=event.uid,
+                     cancelled=True,
+                     source='local')
+    handle_event_updates(default_account.namespace.id,
+                         default_account.default_calendar.id,
+                         [override], log, db.session)
+    db.session.commit()
+    # Check the event got saved with the cancelled flag
+    find_override = db.session.query(Event).filter_by(uid=override_uid).one()
+    assert find_override.cancelled is True
+
+
+def test_master_cancelled(db, default_account):
+    # Test that when the master recurring event is cancelled, we delete it
+    # in its entirety, including all overrides.
+    event = recurring_event(db, default_account, TEST_EXDATE_RULE)
+    override = recurring_override(db, event,
+                                  arrow.get(2014, 9, 4, 20, 30, 00),
+                                  arrow.get(2014, 9, 4, 21, 30, 00),
+                                  arrow.get(2014, 9, 4, 22, 30, 00))
+    deletes = [event.uid]
+    handle_event_deletes(default_account.namespace.id,
+                         default_account.default_calendar.id,
+                         deletes, log, db.session)
+    db.session.commit()
+    find_master = db.session.query(Event).filter_by(uid=event.uid).first()
+    assert find_master is None
+    find_override = db.session.query(Event).filter_by(uid=override.uid).first()
+    assert find_override is None
+
 
 # def test_modify_inflated_recurrence(db, default_account):
 #     pass
@@ -256,31 +447,31 @@ def test_when_delta():
     # Test that the event length is calculated correctly
     ev = Event(namespace_id=0)
     # Time: minutes is 0 if start/end at same time
-    ev.start = datetime(2015, 01, 01, 10, 00, 00)
-    ev.end = datetime(2015, 01, 01, 10, 00, 00)
+    ev.start = arrow.get(2015, 01, 01, 10, 00, 00)
+    ev.end = arrow.get(2015, 01, 01, 10, 00, 00)
     when = ev.when
     assert isinstance(when, Time)
     assert ev.length == timedelta(minutes=0)
 
     # TimeSpan
-    ev.start = datetime(2015, 01, 01, 10, 00, 00)
-    ev.end = datetime(2015, 01, 01, 10, 30, 00)
+    ev.start = arrow.get(2015, 01, 01, 10, 00, 00)
+    ev.end = arrow.get(2015, 01, 01, 10, 30, 00)
     when = ev.when
     assert isinstance(when, TimeSpan)
     assert ev.length == timedelta(minutes=30)
 
     # Date: notice days is 0 if starts/ends on same day
     ev.all_day = True
-    ev.start = datetime(2015, 01, 01, 00, 00, 00)
-    ev.end = datetime(2015, 01, 01, 00, 00, 00)
+    ev.start = arrow.get(2015, 01, 01, 00, 00, 00)
+    ev.end = arrow.get(2015, 01, 01, 00, 00, 00)
     when = ev.when
     assert isinstance(when, Date)
     assert ev.length == timedelta(days=0)
 
     # DateSpan
     ev.all_day = True
-    ev.start = datetime(2015, 01, 01, 10, 00, 00)
-    ev.end = datetime(2015, 01, 02, 10, 00, 00)
+    ev.start = arrow.get(2015, 01, 01, 10, 00, 00)
+    ev.end = arrow.get(2015, 01, 02, 10, 00, 00)
     when = ev.when
     assert isinstance(when, DateSpan)
     assert ev.length == timedelta(days=1)

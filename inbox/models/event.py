@@ -8,6 +8,7 @@ from sqlalchemy import (Column, String, ForeignKey, Text, Boolean, Integer,
                         DateTime, Enum, Index, event)
 from sqlalchemy.orm import relationship, backref, validates
 from sqlalchemy.types import TypeDecorator
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from inbox.sqlalchemy_ext.util import MAX_TEXT_LENGTH, BigJSON, MutableList
 from inbox.models.base import MailSyncBase
@@ -47,7 +48,7 @@ class FlexibleDateTime(TypeDecorator):
         if value is None:
             return value
         else:
-            return arrow.get(value)
+            return arrow.get(value).to('utc')
 
     def compare_values(self, x, y):
         if isinstance(x, datetime) or isinstance(x, int):
@@ -126,8 +127,8 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     def when(self):
         if self.all_day:
             # Dates are stored as DateTimes so transform to dates here.
-            start = self.start.date()
-            end = self.end.date()
+            start = self.start.to('utc').date()
+            end = self.end.to('utc').date()
             return Date(start) if start == end else DateSpan(start, end)
         else:
             start = self.start
@@ -167,17 +168,16 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         self.busy = event.busy
         self.reminders = event.reminders
         self.recurrence = event.recurrence
-        # TODO this update method has to handle a recurring event being updated
-        # define an overload that calls super on the childrenz
 
     @property
     def recurring(self):
         if self.recurrence:
-            r = ast.literal_eval(self.recurrence)
-            # this can be a list containing at least 1 item:
-            # RRULE (required)
-            # EXDATE (optional)
-            return r
+            try:
+                r = ast.literal_eval(self.recurrence)
+                return r
+            except ValueError:
+                log.warn('Invalid RRULE entry for event', event_id=self.id)
+                return []
         return []
 
     @property
@@ -220,11 +220,17 @@ class RecurringEvent(Event):
     until = Column(FlexibleDateTime, nullable=True)
     start_timezone = Column(String(35))
 
+    override_uids = association_proxy('overrides', 'uid')
+
     def __init__(self, **kwargs):
         self.start_timezone = kwargs.pop('original_start_tz', None)
         kwargs['recurrence'] = str(kwargs['recurrence'])
         super(RecurringEvent, self).__init__(**kwargs)
-        self.unwrap_rrule()
+        try:
+            self.unwrap_rrule()
+        except Exception as e:
+            log.error("Error parsing RRULE entry", event_id=self.id,
+                      error=e, exc_info=True)
 
     def inflate(self, start=None, end=None):
         # Convert a RecurringEvent into a series of InflatedEvents
@@ -241,7 +247,7 @@ class RecurringEvent(Event):
                 if 'UNTIL' in item:
                     for p in item.split(';'):
                         if p.startswith('UNTIL'):
-                            self.until = parse_rrule_datetime(p[6:-1])
+                            self.until = parse_rrule_datetime(p[6:])
             elif item.startswith('EXDATE'):
                 self.exdate = item
 
@@ -254,10 +260,13 @@ class RecurringEvent(Event):
         if end:
             overrides = overrides.filter(RecurringEventOverride.end < end)
         events = list(overrides)
-        uids = {e.uid: True for e in events}
-        # If an override has not changed the start time for an event, the
-        # RRULE doesn't include an exception for it. Filter out unnecessary
-        # inflated events to cover this case: they will have the same UID.
+        uids = [e.uid for e in events]
+        # Remove cancellations from the override set
+        events = filter(lambda e: not e.cancelled, events)
+        # If an override has not changed the start time for an event, including
+        # if the override is a cancellation, the RRULE doesn't include an
+        # exception for it. Filter out unnecessary inflated events
+        # to cover this case: they will have the same UID.
         for e in self.inflate(start, end):
             if e.uid not in uids:
                 events.append(e)
@@ -274,7 +283,7 @@ class RecurringEvent(Event):
 
 class RecurringEventOverride(Event):
     API_OBJECT_NAME = 'event_override'
-    # TODO - DELETE CASCADES ! ##
+
     id = Column(Integer, ForeignKey('event.id', ondelete='CASCADE'),
                 primary_key=True)
     __mapper_args__ = {'polymorphic_identity': 'recurringeventoverride',
@@ -284,6 +293,9 @@ class RecurringEventOverride(Event):
     master_event_id = Column(ForeignKey('event.id'))
     master_event_uid = Column(String(767, collation='ascii_general_ci'))
     original_start_time = Column(FlexibleDateTime)
+    # We have to store individual cancellations as overrides, as the EXDATE
+    # isn't always updated. (Fun, right?)
+    cancelled = Column(Boolean, default=False)
 
     master = relationship(RecurringEvent, foreign_keys=[master_event_id],
                           backref=backref('overrides', lazy="dynamic"))
@@ -298,9 +310,6 @@ class RecurringEventOverride(Event):
 class InflatedEvent(Event):
     # NOTE: This is a transient object that should never be committed to the
     # database (it's generated when a recurring event is expanded).
-    # Correspondingly, there doesn't need to be a table for this object,
-    # however we have to pretend there is, so it behaves like an Event.
-    # TODO: I don't like this that much.
     __mapper_args__ = {'polymorphic_identity': 'inflatedevent'}
     __tablename__ = 'event'
     __table_args__ = {'extend_existing': True}
@@ -317,18 +326,9 @@ class InflatedEvent(Event):
 
     def set_start_end(self, start):
         # get the length from the master event
-        length = self.length
-
-        if start.utcoffset() is not None:
-            if start.utcoffset() == timedelta(minutes=0):
-                start = start.replace(tzinfo=None)  # Everything is naive UTC
-            else:
-                print start.utcoffset()
-                raise Exception("Encountered non-UTC timezone! Eek!")
-
-        self.start = start  # this should be a datetime in UTC
+        length = self.master.length
+        self.start = start.to('utc')
         self.end = self.start + length
-        # todo - check this behaves cool with dates
 
     def update(self, master):
         super(InflatedEvent, self).update(master)

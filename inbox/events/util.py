@@ -14,11 +14,14 @@ def parse_datetime(datetime):
 
 
 def parse_rrule_datetime(datetime, tzinfo=None):
-    # format: 20140904T133000Z
+    # format: 20140904T133000Z (datetimes) or 20140904 (dates)
     if datetime[-1] == 'Z':
         tzinfo = 'UTC'
         datetime = datetime[:-1]
-    dt = arrow.get(datetime, 'YYYYMMDDTHHmmss')
+    if len(datetime) == 8:
+        dt = arrow.get(datetime, 'YYYYMMDD').to('utc')
+    else:
+        dt = arrow.get(datetime, 'YYYYMMDDTHHmmss')
     if tzinfo and tzinfo != 'UTC':
         dt = arrow.get(dt.datetime, tzinfo)
     return dt
@@ -32,8 +35,8 @@ def when_to_event_time(raw):
 
 
 def parse_google_time(d):
-    # google dictionaries contain either 'date' or 'dateTime'
-    # along with 'timeZone': the datetime is in ISO format so is UTC-aware.
+    # google dictionaries contain either 'date' or 'dateTime' & 'timeZone'
+    # 'dateTime' is in ISO format so is UTC-aware, 'date' is just a date
     for key, dt in d.iteritems():
         if key != 'timeZone':
             return arrow.get(dt)

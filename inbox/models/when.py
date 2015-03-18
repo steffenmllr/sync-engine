@@ -67,6 +67,9 @@ class When(object):
         # Do we have a start_ property? Return that, or our only property.
         return get_property_or_default(self, 'end_')
 
+    def __repr__(self):
+        return '{} ({} - {})'.format(type(self), self.start, self.end)
+
 
 class AllDayWhen(When):
     pass

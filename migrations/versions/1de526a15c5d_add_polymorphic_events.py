@@ -25,6 +25,7 @@ def upgrade():
         sa.Column('master_event_uid', sa.String(
             length=767, collation='ascii_general_ci'), nullable=True),
         sa.Column('original_start_time', sa.DateTime(), nullable=True),
+        sa.Column('cancelled', sa.Boolean(), default=False),
         sa.ForeignKeyConstraint(['id'], ['event.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['master_event_id'], ['event.id'], ),
         sa.PrimaryKeyConstraint('id')

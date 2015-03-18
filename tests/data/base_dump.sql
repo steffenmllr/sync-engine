@@ -1354,6 +1354,7 @@ CREATE TABLE `recurringeventoverride` (
   `master_event_id` int(11) DEFAULT NULL,
   `master_event_uid` varchar(767) CHARACTER SET ascii DEFAULT NULL,
   `original_start_time` datetime DEFAULT NULL,
+  `cancelled` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `master_event_id` (`master_event_id`),
   CONSTRAINT `recurringeventoverride_ibfk_1` FOREIGN KEY (`id`) REFERENCES `event` (`id`),

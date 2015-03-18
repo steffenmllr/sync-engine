@@ -237,7 +237,7 @@ def test_pagination():
 
 
 def test_recurrence_creation():
-    raw_response = {
+    event = {
         'created': '2012-10-09T22:35:50.000Z',
         'creator': {
             'displayName': 'Eben Freeman',
@@ -273,7 +273,7 @@ def test_recurrence_creation():
         'summary': 'BOD Meeting',
         'updated': '2014-06-21T21:42:09.072Z'
     }
-    event = parse_event_response(raw_response)
+    event = parse_event_response(event)
     assert isinstance(event, RecurringEvent)
     assert event.rrule == 'RRULE:FREQ=WEEKLY;UNTIL=20150209T075959Z;BYDAY=MO'
     assert event.exdate == 'EXDATE;TZID=America/Los_Angeles:20150208T010000'
@@ -282,7 +282,7 @@ def test_recurrence_creation():
 
 
 def test_override_creation():
-    raw_response = {
+    event = {
         'created': '2012-10-09T22:35:50.000Z',
         'creator': {
             'displayName': 'Eben Freeman',
@@ -321,7 +321,59 @@ def test_override_creation():
         'summary': 'BOD Meeting',
         'updated': '2014-06-21T21:42:09.072Z'
     }
-    event = parse_event_response(raw_response)
+    event = parse_event_response(event)
     assert isinstance(event, RecurringEventOverride)
     assert event.master_event_uid == 'tn7krk4cekt8ag3pk6gapqqbro'
     assert event.original_start_time == arrow.get(2012, 10, 23, 00, 00, 00)
+
+
+def test_cancelled_override_creation():
+    # With showDeleted=True, we receive cancelled events (including instances
+    # of recurring events) as full event objects, with status = 'cancelled'.
+    # Test that we save this as a RecurringEventOverride rather than trying
+    # to delete the UID.
+    raw_response = [{
+        'created': '2012-10-09T22:35:50.000Z',
+        'creator': {
+            'displayName': 'Eben Freeman',
+            'email': 'freemaneben@gmail.com',
+            'self': True
+        },
+        'end': {'dateTime': '2012-10-22T19:00:00-07:00'},
+        'etag': '"2806773858144000"',
+        'htmlLink': 'https://www.google.com/calendar/event?eid=FOO',
+        'iCalUID': 'tn7krk4cekt8ag3pk6gapqqbro@google.com',
+        'id': 'tn7krk4cekt8ag3pk6gapqqbro_20121022T170000Z',
+        'kind': 'calendar#event',
+        'organizer': {
+            'displayName': 'Eben Freeman',
+            'email': 'freemaneben@gmail.com',
+            'self': True
+        },
+        'attendees': [
+            {'displayName': 'MITOC BOD',
+             'email': 'mitoc-bod@mit.edu',
+             'responseStatus': 'accepted'},
+            {'displayName': 'Eben Freeman',
+             'email': 'freemaneben@gmail.com',
+             'responseStatus': 'accepted'}
+        ],
+        'originalStartTime': {
+            'dateTime': '2012-10-22T17:00:00-07:00',
+            'timeZone': 'America/Los_Angeles'
+        },
+        'recurringEventId': 'tn7krk4cekt8ag3pk6gapqqbro',
+        'reminders': {'useDefault': True},
+        'sequence': 0,
+        'start': {'dateTime': '2012-10-22T18:00:00-07:00',
+                  'timeZone': 'America/Los_Angeles'},
+        'status': 'cancelled',
+        'summary': 'BOD Meeting',
+    }]
+
+    provider = GoogleEventsProvider(1, 1)
+    provider._get_raw_events = mock.MagicMock(
+        return_value=raw_response)
+    deletes, updates = provider.sync_events('uid', 1)
+    assert len(deletes) == 0
+    assert updates[0].cancelled is True

@@ -77,7 +77,9 @@ class GoogleEventsProvider(object):
         updates = []
         items = self._get_raw_events(calendar_uid, sync_from_time)
         for item in items:
-            if item.get('status') == 'cancelled':
+            # We need to instantiate recurring event cancellations as overrides
+            if item.get('status') == 'cancelled' and not \
+                    item.get('recurringEventId'):
                 deletes.append(item['id'])
             else:
                 updates.append(parse_event_response(item))
@@ -259,6 +261,7 @@ def parse_event_response(event):
     # Recurring master or override info
     recurrence = event.get('recurrence')
     master_uid = event.get('recurringEventId')
+    cancelled = (event.get('status') == 'cancelled')
 
     return Event(uid=uid,
                  raw_data=raw_data,
@@ -277,6 +280,7 @@ def parse_event_response(event):
                  original_start_tz=start_tz,
                  original_start_time=original_start,
                  master_event_uid=master_uid,
+                 cancelled=cancelled,
                  # TODO(emfree): remove after data cleanup
                  source='local')
 
