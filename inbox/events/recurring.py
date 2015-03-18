@@ -38,7 +38,6 @@ def link_master(db_session, event):
     # been synced yet)
     if not event.master:
         if event.master_event_uid:
-            print 'looking for master at {}'.format(event.master_event_uid)
             master = db_session.query(RecurringEvent).\
                 filter_by(namespace_id=event.namespace_id,
                           uid=event.master_event_uid,
@@ -56,8 +55,6 @@ def parse_rrule(event):
         # TODO: Deal with things that don't parse here.
         rrule = rrulestr(event.rrule, dtstart=start.datetime, compatible=True)
         return rrule
-    else:
-        print 'Warning tried to parse null RRULE for event {}'.format(event.id)
 
 
 def parse_exdate(event):

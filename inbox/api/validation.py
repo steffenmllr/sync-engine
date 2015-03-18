@@ -1,5 +1,6 @@
 """Utilities for validating user input to the API."""
 from datetime import datetime
+import arrow
 from arrow.parser import ParserError
 from flanker.addresslib import address
 from flask.ext.restful import reqparse
@@ -56,7 +57,7 @@ def valid_public_id(value):
 
 def timestamp(value, key):
     try:
-        return datetime.utcfromtimestamp(int(value))
+        return arrow.get(value).datetime
     except ValueError:
         raise ValueError('Invalid timestamp value {} for {}'.
                          format(value, key))

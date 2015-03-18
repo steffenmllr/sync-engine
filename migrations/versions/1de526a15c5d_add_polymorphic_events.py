@@ -10,6 +10,7 @@ Create Date: 2015-03-11 22:51:22.180028
 revision = '1de526a15c5d'
 down_revision = '486c7fa5b533'
 
+import json
 import ast
 from alembic import op
 import sqlalchemy as sa
@@ -75,7 +76,11 @@ def populate():
 
         query = db.query(RecurringEventOverride)
         for e in query:
-            raw_data = ast.literal_eval(e.raw_data)
+            try:
+                # Some raw data is str(dict), other is json.dumps
+                raw_data = json.loads(e.raw_data)
+            except:
+                raw_data = ast.literal_eval(e.raw_data)
             rec_uid = raw_data.get('recurringEventId')
             if rec_uid:
                 e.master_event_uid = rec_uid
@@ -116,7 +121,10 @@ def populate():
         query = db.query(RecurringEvent)
         for r in query:
             r.unwrap_rrule()
-            raw_data = ast.literal_eval(e.raw_data)
+            try:
+                raw_data = json.loads(r.raw_data)
+            except:
+                raw_data = ast.literal_eval(r.raw_data)
             r.start_timezone = raw_data['start'].get('timeZone')
             # find any un-found overrides that didn't have masters earlier
             overrides = link_events(db, r)

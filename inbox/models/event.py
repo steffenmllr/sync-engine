@@ -50,7 +50,12 @@ class FlexibleDateTime(TypeDecorator):
             return arrow.get(value)
 
     def compare_values(self, x, y):
-        return arrow.get(x) == arrow.get(y)
+        if isinstance(x, datetime) or isinstance(x, int):
+            x = arrow.get(x)
+        if isinstance(y, datetime) or isinstance(x, int):
+            y = arrow.get(y)
+
+        return x == y
 
 
 class Event(MailSyncBase, HasRevisions, HasPublicID):

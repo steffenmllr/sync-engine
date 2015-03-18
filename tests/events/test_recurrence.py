@@ -149,7 +149,7 @@ def test_inflate_across_DST(db, default_account):
     local_tz = tz.gettz(dst_event.start_timezone)
 
     for time in g:
-        if time < datetime(2015, 3, 8, tzinfo=tz.tzutc()):
+        if time < arrow.get(2015, 3, 8):
             assert time.hour == 3
         else:
             assert time.hour == 2
