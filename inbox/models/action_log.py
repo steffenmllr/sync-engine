@@ -54,6 +54,7 @@ def schedule_action(func_name, record, namespace_id, db_session, **kwargs):
         raise ActionError(error=403, namespace_id=namespace_id)
 
     log_entry = account.actionlog_cls.create(
+        session=db_session,
         action=func_name,
         table_name=record.__tablename__,
         record_id=record.id,
@@ -78,7 +79,8 @@ class ActionLog(MailSyncBase):
     extra_args = Column(JSON, nullable=True)
 
     @classmethod
-    def create(cls, action, table_name, record_id, namespace_id, extra_args):
+    def create(cls, session, action, table_name, record_id, namespace_id,
+               extra_args):
         return cls(action=action, table_name=table_name, record_id=record_id,
                    namespace_id=namespace_id, extra_args=extra_args)
 

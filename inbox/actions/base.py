@@ -21,6 +21,7 @@ not really a problem because of the limited ways mail messages can change.
 
 ACTIONS MUST BE IDEMPOTENT! We are going to have task workers guarantee
 at-least-once semantics.
+
 """
 from inbox.actions.backends import module_registry
 
