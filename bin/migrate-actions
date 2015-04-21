@@ -1,0 +1,24 @@
+#!/usr/bin/env python
+from sqlalchemy.orm import contains_eager
+
+from inbox.models import Namespace, Account, ActionLog
+from inbox.models.session import session_scope
+
+
+def main():
+    with session_scope() as db_session:
+        q = db_session.query(ActionLog).join(Namespace).join(Account).\
+            filter(ActionLog.status == 'pending',
+                   Account.discriminator != 'easaccount').\
+            options(contains_eager(ActionLog.namespace, Namespace.account))
+
+        print 'Updating {} action_log entries'.format(q.count())
+
+        for a in q.all():
+            a.type = 'actionlog'
+
+        db_session.commit()
+
+
+if __name__ == '__main__':
+    main()
