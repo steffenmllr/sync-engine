@@ -25,15 +25,10 @@ def upgrade():
 
     op.create_table('easactionlog',
                     sa.Column('id', sa.Integer()),
-                    sa.Column('foldersync_id', sa.Integer()),
                     sa.PrimaryKeyConstraint('id'),
                     sa.ForeignKeyConstraint(['id'], ['actionlog.id'],
-                                            ondelete='CASCADE'),
-                    sa.ForeignKeyConstraint(['foldersync_id'], ['easfoldersync.id'],
                                             ondelete='CASCADE'))
-    op.create_index('ix_easactionlog_foldersync_id', 'easactionlog',
-                    ['foldersync_id'])
 
 
 def downgrade():
-    pass
+    raise Exception('Downgrade -> lost data!')

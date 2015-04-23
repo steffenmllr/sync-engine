@@ -1,6 +1,6 @@
 -- MySQL dump 10.13  Distrib 5.5.38, for debian-linux-gnu (x86_64)
 --
--- Host: localhost    Database: test
+-- Host: localhost    Database: inbox
 -- ------------------------------------------------------
 -- Server version	5.5.38-0ubuntu0.12.04.1-log
 
@@ -378,10 +378,11 @@ DROP TABLE IF EXISTS `easactionlog`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `easactionlog` (
   `id` int(11) NOT NULL,
-  `eas_folder_id` varchar(64) DEFAULT NULL,
+  `foldersync_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `ix_easactionlog_eas_folder_id` (`eas_folder_id`),
-  CONSTRAINT `easactionlog_ibfk_1` FOREIGN KEY (`id`) REFERENCES `actionlog` (`id`) ON DELETE CASCADE
+  KEY `ix_easactionlog_foldersync_id` (`foldersync_id`),
+  CONSTRAINT `easactionlog_ibfk_1` FOREIGN KEY (`id`) REFERENCES `actionlog` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `easactionlog_ibfk_2` FOREIGN KEY (`foldersync_id`) REFERENCES `easfoldersync` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1869,4 +1870,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-04-20 21:37:53
+-- Dump completed on 2015-04-21 21:54:52
