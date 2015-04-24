@@ -184,6 +184,11 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
         elif tag == trash_tag:
             self.tags.discard(inbox_tag)
 
+        unread_tag = self.namespace.tags['unread']
+        if tag == unread_tag:
+            for message in self.messages:
+                message.is_read = False
+
     def remove_tag(self, tag, execute_action=False):
         """
         Remove the given Tag instance from this thread. Does nothing if the
@@ -224,6 +229,10 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
             self.tags.add(inbox_tag)
         elif tag == spam_tag:
             self.tags.add(inbox_tag)
+
+        if tag == unread_tag:
+            for message in self.messages:
+                message.is_read = True
 
     @property
     def drafts(self):

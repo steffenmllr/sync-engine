@@ -25,7 +25,7 @@ at-least-once semantics.
 """
 from inbox.actions.backends import module_registry
 
-from inbox.models import Account, Message, Thread, Folder
+from inbox.models import Account, Message, Folder
 from inbox.sendmail.base import generate_attachments
 from inbox.sendmail.message import create_email
 from inbox.log import get_logger
@@ -66,9 +66,6 @@ def unstar(account_id, thread_id, db_session):
 
 
 def mark_unread(account_id, thread_id, db_session):
-    thread = db_session.query(Thread).get(thread_id)
-    for message in thread.messages:
-        message.is_read = False
     account = db_session.query(Account).get(account_id)
     set_remote_unread = module_registry[account.provider]. \
         set_remote_unread
@@ -76,9 +73,6 @@ def mark_unread(account_id, thread_id, db_session):
 
 
 def mark_read(account_id, thread_id, db_session):
-    thread = db_session.query(Thread).get(thread_id)
-    for message in thread.messages:
-        message.is_read = True
     account = db_session.query(Account).get(account_id)
     set_remote_unread = module_registry[account.provider]. \
         set_remote_unread
