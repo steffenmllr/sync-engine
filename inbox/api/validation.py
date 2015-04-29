@@ -186,6 +186,7 @@ def get_recipients(recipients, field):
         return None
     if not isinstance(recipients, list):
         raise InputError('Invalid {} field'.format(field))
+
     for r in recipients:
         if not (isinstance(r, dict) and 'email' in r and
                 isinstance(r['email'], basestring)):

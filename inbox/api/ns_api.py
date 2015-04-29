@@ -665,7 +665,8 @@ def event_create_api():
     g.db_session.add(event)
     g.db_session.flush()
 
-    schedule_action('create_event', event, g.namespace.id, g.db_session)
+    schedule_action('create_event', event, g.namespace.id, g.db_session,
+                    calendar_uid=event.calendar.uid)
     return g.encoder.jsonify(event)
 
 
@@ -707,7 +708,8 @@ def event_update_api(public_id):
             setattr(event, attr, data[attr])
 
     g.db_session.commit()
-    schedule_action('update_event', event, g.namespace.id, g.db_session)
+    schedule_action('update_event', event, g.namespace.id, g.db_session,
+                    calendar_uid=event.calendar.uid)
     return g.encoder.jsonify(event)
 
 
@@ -725,8 +727,7 @@ def event_delete_api(public_id):
                          'calendar.'.format(public_id))
 
     schedule_action('delete_event', event, g.namespace.id, g.db_session,
-                    event_uid=event.uid,
-                    calendar_name=event.calendar.name,
+                    event_uid=event.uid, calendar_name=event.calendar.name,
                     calendar_uid=event.calendar.uid)
     g.db_session.delete(event)
     g.db_session.commit()
@@ -997,6 +998,14 @@ def draft_update_api(public_id):
     to = get_recipients(data.get('to'), 'to')
     cc = get_recipients(data.get('cc'), 'cc')
     bcc = get_recipients(data.get('bcc'), 'bcc')
+    from_addr = get_recipients(data.get('from_addr'), 'from_addr')
+    reply_to = get_recipients(data.get('reply_to'), 'reply_to')
+
+    if from_addr and len(from_addr) > 1:
+        raise InputError("from_addr field can have at most one item")
+    if reply_to and len(reply_to) > 1:
+        raise InputError("reply_to field can have at most one item")
+
     subject = data.get('subject')
     body = data.get('body')
     tags = get_tags(data.get('tags'), g.namespace.id, g.db_session)
@@ -1004,7 +1013,8 @@ def draft_update_api(public_id):
 
     try:
         draft = update_draft(g.db_session, g.namespace.account, original_draft,
-                             to, subject, body, files, cc, bcc, tags)
+                             to, subject, body, files, cc, bcc, from_addr,
+                             reply_to, tags)
     except ActionError as e:
         return err(e.error, str(e))
 
