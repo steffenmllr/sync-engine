@@ -22,6 +22,16 @@ from inbox.search.mappings import NAMESPACE_INDEX_MAPPING
 # es_logger = logging.getLogger('elasticsearch')
 # es_logger.propagate = False
 
+DEFAULT_INDEX_SETTINGS = {
+    "mappings": NAMESPACE_INDEX_MAPPING,
+    "settings": {
+        "index": {
+            "number_of_shards": 1,
+            "number_of_replicas": 1
+        }
+    }
+}
+
 
 class SearchEngineError(Exception):
     """ Raised when connecting to the Elasticsearch server fails. """
@@ -83,7 +93,7 @@ class NamespaceSearchEngine(object):
             self.log.info('create_index')
             self._connection.indices.create(
                 index=self.index_id,
-                body={'mappings': NAMESPACE_INDEX_MAPPING})
+                body=DEFAULT_INDEX_SETTINGS)
         except elasticsearch.exceptions.RequestError:
             self.log.warning('create_index error, will re-configure.')
             # If the index already exists, ensure the right mappings are still
