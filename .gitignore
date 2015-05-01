@@ -80,3 +80,6 @@ TAGS
 
 # directory used to store build files
 setup/
+
+#emacs
+*~
