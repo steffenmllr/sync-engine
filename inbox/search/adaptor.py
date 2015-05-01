@@ -9,6 +9,7 @@ from inbox.log import get_logger
 log = get_logger()
 from inbox.search.query import DSLQueryEngine, MessageQuery, ThreadQuery
 from inbox.search.mappings import NAMESPACE_INDEX_MAPPING
+from inbox.search.transport import StatsdLoggedTransport
 
 # Uncomment to enable logging of exactly which queries are made against the
 # elasticsearch server, which you can paste directly into curl... also logs
@@ -46,7 +47,9 @@ def new_connection():
     elasticsearch_hosts = config.get('ELASTICSEARCH_HOSTS')
     if not elasticsearch_hosts:
         raise SearchEngineError('No search hosts configured')
-    return elasticsearch.Elasticsearch(hosts=elasticsearch_hosts)
+    return elasticsearch.Elasticsearch(hosts=elasticsearch_hosts,
+                                       transport_class=StatsdLoggedTransport)
+    )
 
 
 def wrap_es_errors(func):
