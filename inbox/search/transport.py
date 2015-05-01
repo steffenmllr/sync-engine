@@ -4,9 +4,9 @@ import statsd
 
 from inbox.config import config
 
-STATSD_HOST = config.get("STATSD_HOST")
-STATSD_PORT = config.get("STATSD_PORT")
-STATSD_PREFIX = config.get("STATSD_PREFIX")
+STATSD_HOST = config.get("STATSD_HOST", "localhost")
+STATSD_PORT = config.get("STATSD_PORT", 8125)
+STATSD_PREFIX = config.get("STATSD_PREFIX", None)
 
 statsd_client = statsd.StatsClient(STATSD_HOST, STATSD_PORT, STATSD_PREFIX)
 

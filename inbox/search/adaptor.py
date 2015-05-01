@@ -49,7 +49,6 @@ def new_connection():
         raise SearchEngineError('No search hosts configured')
     return elasticsearch.Elasticsearch(hosts=elasticsearch_hosts,
                                        transport_class=StatsdLoggedTransport)
-    )
 
 
 def wrap_es_errors(func):
