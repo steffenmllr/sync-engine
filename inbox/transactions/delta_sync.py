@@ -1,13 +1,36 @@
 import time
 import gevent
+import collections
 from datetime import datetime
 
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import joinedload
 from inbox.api.kellogs import APIEncoder, encode
-from inbox.models import Transaction
+from inbox.models import Transaction, Part, Message, Thread
 from inbox.models.session import session_scope
 from inbox.models.util import transaction_objects
+
+
+query_options = {
+    'message': (
+        joinedload('parts').joinedload('block'),
+        joinedload('thread').load_only('public_id', 'discriminator'),
+        joinedload('events').load_only('public_id', 'discriminator')
+    ),
+    'thread': (
+        joinedload('messages').load_only(
+            'public_id', 'is_draft', 'from_addr', 'to_addr', 'cc_addr',
+            'bcc_addr'),
+        joinedload('tagitems').joinedload('tag').load_only(
+            'public_id', 'name')
+    )
+}
+
+event_name_for_command = {
+    'insert': 'create',
+    'update': 'modify',
+    'delete': 'delete'
+}
 
 
 def get_transaction_cursor_near_timestamp(namespace_id, timestamp, db_session):
@@ -121,42 +144,54 @@ def format_transactions_after_pointer(namespace_id, pointer, db_session,
     if not transactions:
         return ([], pointer)
 
-    deltas = []
-    # If there are multiple transactions for the same object, only publish the
-    # most recent.
-    object_identifiers = set()
-    for trx in sorted(transactions, key=lambda trx: trx.id, reverse=True):
-        object_identifier = (trx.object_type, trx.record_id)
-        if object_identifier in object_identifiers:
-            continue
+    results = []
 
-        object_identifiers.add(object_identifier)
+    # Group deltas by object type.
+    trxs_by_obj_type = collections.defaultdict(list)
+    for trx in transactions:
+        trxs_by_obj_type[trx.object_type].append(trx)
 
-        delta = {}
-        if trx.command != 'delete':
-            object_cls = transaction_objects()[trx.object_type]
-            obj = db_session.query(object_cls).get(trx.record_id)
-            if obj is None:
-                continue
-            delta['attributes'] = encode(
-                obj, namespace_public_id=trx.namespace.public_id)
+    for obj_type, trxs in trxs_by_obj_type.items():
+        # If an object appears repeatedly in the list of transactions, only
+        # keep the latest transaction.
+        ids = set()
+        reduced_trxs = []
+        for trx in sorted(trxs, key=lambda t: -t.id):
+            if trx.record_id not in ids:
+                ids.add(trx.record_id)
+                reduced_trxs.append(trx)
 
-        if trx.command == 'insert':
-            event = 'create'
-        elif trx.command == 'update':
-            event = 'modify'
-        else:
-            event = 'delete'
+        # Load all referenced not-deleted objects.
+        ids_to_query = [trx.record_id for trx in reduced_trxs
+                        if trx.command != 'delete']
 
-        delta.update({
-            'object': trx.object_type,
-            'event': event,
-            'id': trx.object_public_id,
-            'cursor': trx.public_id
-        })
-        deltas.append(delta)
+        object_cls = transaction_objects()[obj_type]
+        query = db_session.query(object_cls).filter(
+            object_cls.id.in_(ids_to_query),
+            object_cls.namespace_id == namespace_id)
+        if obj_type in query_options:
+            query = query.options(*query_options[obj_type])
+        objects = {obj.id: obj for obj in query}
 
-    return (list(reversed(deltas)), transactions[-1].id)
+        for trx in reduced_trxs:
+            delta = {
+                'object': trx.object_type,
+                'event': event_name_for_command[trx.command],
+                'id': trx.object_public_id,
+                'cursor': trx.public_id
+            }
+            if trx.command != 'delete':
+                obj = objects.get(trx.record_id)
+                if obj is None:
+                    continue
+                repr_ = encode(
+                    obj, namespace_public_id=trx.namespace.public_id)
+                delta['attributes'] = repr_
+
+            results.append((trx.id, delta))
+
+    deltas = [delta for _, delta in sorted(results)]
+    return (deltas, deltas[-1]['cursor'])
 
 
 def streaming_change_generator(namespace_id, poll_interval, timeout,
