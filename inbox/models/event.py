@@ -322,7 +322,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         super(Event, self).__init__(**kwargs)
 
 
-class RecurringEvent(Event):
+class RecurringEvent(Event, HasRevisions):
     """ Represents an individual one-off instance of a recurring event,
         including cancelled events.
     """
@@ -406,7 +406,7 @@ class RecurringEvent(Event):
             self.start_timezone = event.start_timezone
 
 
-class RecurringEventOverride(Event):
+class RecurringEventOverride(Event, HasRevisions):
     """ Represents an individual one-off instance of a recurring event,
         including cancelled events.
     """
