@@ -1075,10 +1075,8 @@ def draft_send_api():
 ##
 # Client syncing
 ##
-from inbox.util.debug import profile
 
 @app.route('/delta')
-#@profile
 def sync_deltas():
     g.parser.add_argument('cursor', type=valid_public_id, location='args',
                           required=True)
