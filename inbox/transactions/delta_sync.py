@@ -1,11 +1,36 @@
 import time
 import gevent
+import collections
 from datetime import datetime
 
 from sqlalchemy import asc, desc
-from inbox.api.kellogs import APIEncoder
-from inbox.models import Transaction
+from sqlalchemy.orm import subqueryload
+from inbox.api.kellogs import APIEncoder, encode
+from inbox.models import Transaction, Message, Thread, Namespace
 from inbox.models.session import session_scope
+from inbox.models.util import transaction_objects
+
+
+QUERY_OPTIONS = {
+    Message: (
+        subqueryload('parts').joinedload('block'),
+        subqueryload('thread').load_only('public_id', 'discriminator'),
+        subqueryload('events').load_only('public_id', 'discriminator')
+    ),
+    Thread: (
+        subqueryload('messages').load_only(
+            'public_id', 'is_draft', 'from_addr', 'to_addr', 'cc_addr',
+            'bcc_addr'),
+        subqueryload('tagitems').joinedload('tag').load_only(
+            'public_id', 'name')
+    )
+}
+
+EVENT_NAME_FOR_COMMAND = {
+    'insert': 'create',
+    'update': 'modify',
+    'delete': 'delete'
+}
 
 
 def get_transaction_cursor_near_timestamp(namespace_id, timestamp, db_session):
@@ -63,9 +88,8 @@ def get_transaction_cursor_near_timestamp(namespace_id, timestamp, db_session):
     return latest_transaction.public_id
 
 
-def format_transactions_after_pointer(namespace_id, pointer, db_session,
-                                      result_limit, format_transaction_fn,
-                                      exclude_types=None):
+def format_transactions_after_pointer(namespace, pointer, db_session,
+                                      result_limit, exclude_types=None):
     """
     Return a pair (deltas, new_pointer), where deltas is a list of change
     events, represented as dictionaries:
@@ -95,60 +119,79 @@ def format_transactions_after_pointer(namespace_id, pointer, db_session,
         If given, don't include transactions for these types of objects.
 
     """
-    filters = [Transaction.id > pointer]
-
-    if namespace_id is not None:
-        # deleted_at condition included to allow this query to be satisfied via
-        # the legacy index on (namespace_id, deleted_at) for performance.
-        # TODO(emfree): Remove this hack and ensure that the right index (on
-        # namespace_id only) exists.
-        filters.append(Transaction.namespace_id == namespace_id)
-        filters.append(Transaction.deleted_at.is_(None))
+    # deleted_at condition included to allow this query to be satisfied via
+    # the legacy index on (namespace_id, deleted_at) for performance.
+    # Also need to explicitly specify the index hint because the query
+    # planner is dumb as nails and otherwise would make this super slow for
+    # some values of namespace_id and pointer.
+    # TODO(emfree): Remove this hack and ensure that the right index (on
+    # namespace_id only) exists.
+    transactions = db_session.query(Transaction). \
+        filter(
+            Transaction.id > pointer,
+            Transaction.namespace_id == namespace.id,
+            Transaction.deleted_at.is_(None)). \
+        with_hint(Transaction, 'USE INDEX (namespace_id_deleted_at)')
 
     if exclude_types is not None:
-        filters.append(~Transaction.object_type.in_(exclude_types))
+        transactions = transactions.filter(
+            ~Transaction.object_type.in_(exclude_types))
 
-    transactions = db_session.query(Transaction). \
-        order_by(asc(Transaction.id)). \
-        filter(*filters).limit(result_limit)
-
-    if namespace_id is not None:
-        # Need to explicitly specify the index hint because the query planner
-        # is dumb as nails and otherwise would make this super slow for some
-        # values of namespace_id and pointer.
-        transactions = transactions. \
-            with_hint(Transaction, 'USE INDEX (namespace_id_deleted_at)')
-
-    transactions = transactions.all()
+    transactions = transactions. \
+        order_by(asc(Transaction.id)).limit(result_limit).all()
 
     if not transactions:
         return ([], pointer)
 
-    deltas = []
-    # If there are multiple transactions for the same object, only publish the
-    # most recent.
-    # Note: Works as is even when we're querying across all namespaces (i.e.
-    # namespace_id = None) because the object is identified by its id in
-    # addition to type, and all objects are restricted to a single namespace.
-    object_identifiers = set()
-    for transaction in sorted(transactions, key=lambda trx: trx.id,
-                              reverse=True):
-        object_identifier = (transaction.object_type, transaction.record_id)
-        if object_identifier in object_identifiers:
-            continue
+    results = []
 
-        object_identifiers.add(object_identifier)
+    # Group deltas by object type.
+    trxs_by_obj_type = collections.defaultdict(list)
+    for trx in transactions:
+        trxs_by_obj_type[trx.object_type].append(trx)
 
-        delta = format_transaction_fn(transaction)
-        if not delta:
-            continue
+    for obj_type, trxs in trxs_by_obj_type.items():
+        # Build a dictionary mapping record_id to transaction. If an object
+        # appears repeatedly in the list of transactions, this will only keep
+        # the latest transaction for that record_id (which is what we want).
+        latest_trxs = {trx.record_id: trx for trx in
+                       sorted(trxs, key=lambda t: t.id)}
+        # Load all referenced not-deleted objects.
+        ids_to_query = [record_id for record_id, trx in latest_trxs.items()
+                        if trx.command != 'delete']
 
-        deltas.append(delta)
+        object_cls = transaction_objects()[obj_type]
+        query = db_session.query(object_cls).filter(
+            object_cls.id.in_(ids_to_query),
+            object_cls.namespace_id == namespace.id)
+        if object_cls in QUERY_OPTIONS:
+            query = query.options(*QUERY_OPTIONS[object_cls])
+        objects = {obj.id: obj for obj in query}
 
-    return (list(reversed(deltas)), transactions[-1].id)
+        for trx in latest_trxs.values():
+            delta = {
+                'object': trx.object_type,
+                'event': EVENT_NAME_FOR_COMMAND[trx.command],
+                'id': trx.object_public_id,
+                'cursor': trx.public_id
+            }
+            if trx.command != 'delete':
+                obj = objects.get(trx.record_id)
+                if obj is None:
+                    continue
+                repr_ = encode(
+                    obj, namespace_public_id=namespace.public_id)
+                delta['attributes'] = repr_
+
+            results.append((trx.id, delta))
+
+    # Finally, sort deltas by id of the underlying transactions.
+    results.sort()
+    deltas = [delta for _, delta in results]
+    return (deltas, results[-1][0])
 
 
-def streaming_change_generator(namespace_id, poll_interval, timeout,
+def streaming_change_generator(namespace, poll_interval, timeout,
                                transaction_pointer, exclude_types=None):
     """
     Poll the transaction log for the given `namespace_id` until `timeout`
@@ -171,29 +214,13 @@ def streaming_change_generator(namespace_id, poll_interval, timeout,
     while time.time() - start_time < timeout:
         with session_scope() as db_session:
             deltas, new_pointer = format_transactions_after_pointer(
-                namespace_id, transaction_pointer, db_session, 100,
-                _format_transaction_for_delta_sync, exclude_types)
+                namespace, transaction_pointer, db_session, 100,
+                exclude_types)
+
         if new_pointer is not None and new_pointer != transaction_pointer:
             transaction_pointer = new_pointer
             for delta in deltas:
                 yield encoder.cereal(delta) + '\n'
         else:
+            yield '\n'
             gevent.sleep(poll_interval)
-
-
-def _format_transaction_for_delta_sync(transaction):
-    if transaction.command == 'insert':
-        event = 'create'
-    elif transaction.command == 'update':
-        event = 'modify'
-    else:
-        event = 'delete'
-    delta = {
-        'object': transaction.object_type,
-        'event': event,
-        'id': transaction.object_public_id,
-        'cursor': transaction.public_id
-    }
-    if transaction.command != 'delete':
-        delta['attributes'] = transaction.snapshot
-    return delta

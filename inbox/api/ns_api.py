@@ -383,7 +383,8 @@ def thread_api_update(public_id):
         if tag is None:
             raise NotFoundError("Couldn't find tag {}".format(tag_identifier))
         if not tag.user_removable:
-            raise InputError('Cannot remove tag {}'.format(tag_identifier))
+            raise InputError('Cannot remove read-only tag {}'.
+                             format(tag_identifier))
 
         try:
             thread.remove_tag(tag, execute_action=True)
@@ -399,7 +400,8 @@ def thread_api_update(public_id):
         if tag is None:
             raise NotFoundError("Couldn't find tag {}".format(tag_identifier))
         if not tag.user_addable:
-            raise InputError('Cannot remove tag {}'.format(tag_identifier))
+            raise InputError('Cannot add read-only tag {}'.
+                             format(tag_identifier))
 
         try:
             thread.apply_tag(tag, execute_action=True)
@@ -1075,7 +1077,6 @@ def draft_send_api():
 ##
 # Client syncing
 ##
-
 @app.route('/delta')
 def sync_deltas():
     g.parser.add_argument('cursor', type=valid_public_id, location='args',
@@ -1106,8 +1107,8 @@ def sync_deltas():
     while time.time() - start_time < LONG_POLL_REQUEST_TIMEOUT:
         with session_scope() as db_session:
             deltas, _ = delta_sync.format_transactions_after_pointer(
-                g.namespace.id, start_pointer, db_session, args['limit'],
-                delta_sync._format_transaction_for_delta_sync, exclude_types)
+                g.namespace, start_pointer, db_session, args['limit'],
+                exclude_types)
 
         response = {
             'cursor_start': cursor,
@@ -1170,9 +1171,10 @@ def stream_changes():
 
     # Hack to not keep a database session open for the entire (long) request
     # duration.
+    g.db_session.expunge(g.namespace)
     g.db_session.close()
     # TODO make transaction log support the `expand` feature
     generator = delta_sync.streaming_change_generator(
-        g.namespace.id, transaction_pointer=transaction_pointer,
+        g.namespace, transaction_pointer=transaction_pointer,
         poll_interval=1, timeout=timeout, exclude_types=exclude_types)
     return Response(generator, mimetype='text/event-stream')
