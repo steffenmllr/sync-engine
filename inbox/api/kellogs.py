@@ -97,7 +97,7 @@ def encode(obj, namespace_public_id=None, expand=False):
             'date': obj.received_date,
             'thread_id': obj.thread.public_id,
             'snippet': obj.snippet,
-            'body': obj.sanitized_body,
+            'body': obj.body,
             'unread': not obj.is_read,
             'files': obj.api_attachment_metadata,
             'events': [event.public_id for event in obj.events],
@@ -148,7 +148,7 @@ def encode(obj, namespace_public_id=None, expand=False):
                 'cc': format_address_list(msg.cc_addr),
                 'bcc': format_address_list(msg.bcc_addr),
                 'date': msg.received_date,
-                'thread_id': msg.thread.public_id,
+                'thread_id': obj.public_id,
                 'snippet': msg.snippet,
                 'unread': not msg.is_read,
                 'files': msg.api_attachment_metadata
