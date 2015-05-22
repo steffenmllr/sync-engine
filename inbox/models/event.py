@@ -100,22 +100,8 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     raw_data = Column(Text, nullable=False)
 
     title = Column(String(TITLE_MAX_LEN), nullable=True)
-    # FIXME: remove this temporary fix when we're done migrating
-    # (see T1113)
-    _owner = Column('owner', String(OWNER_MAX_LEN), nullable=True)
-    _owner2 = Column('owner2', String(OWNER_MAX_LEN), nullable=True)
-
-    @property
-    def owner(self):
-        if self._owner2 is not None:
-            return self._owner2
-        return self._owner
-
-    @owner.setter
-    def owner(self, value):
-        self._owner = value
-        self._owner2 = value
-
+    # The database column is named differently for legacy reasons.
+    owner = Column('owner2', String(OWNER_MAX_LEN), nullable=True)
     description = Column(Text, nullable=True)
     location = Column(String(LOCATION_MAX_LEN), nullable=True)
     busy = Column(Boolean, nullable=False, default=True)
@@ -239,7 +225,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
             if email is not None:
                 if email in self_hash:
                     self_hash[email] =\
-                     self._merge_participant_attributes(self_hash[email],
+                    self._merge_participant_attributes(self_hash[email],
                                                         participant)
                 else:
                     self_hash[email] = participant
