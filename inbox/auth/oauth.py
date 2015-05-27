@@ -1,103 +1,47 @@
 import urllib
 import requests
 from imapclient import IMAPClient
-from socket import gaierror, error as socket_error
-from ssl import SSLError
+import socket
 from simplejson import JSONDecodeError
 from inbox.auth.base import AuthHandler
-from inbox.basicauth import (ConnectionError, ValidationError,
-                             TransientConnectionError, OAuthError)
+from inbox.basicauth import ConnectionError, OAuthError
 from inbox.models.backends.oauth import token_manager
 from inbox.log import get_logger
 log = get_logger()
 
 
 class OAuthAuthHandler(AuthHandler):
-    def connect_account(self, email, pw, imap_endpoint, account_id=None):
-        """Provide a connection to a IMAP account.
-
-        Raises
-        ------
-        socket.error
-            If we cannot connect to the IMAP host.
-        IMAPClient.error
-            If the credentials are invalid.
-        """
-        host, port = imap_endpoint
+    def connect_account(self, account):
+        """STOPSHIP(emfree) maybe add a docstring that's not totally wrong."""
+        host, port = account.imap_endpoint
         try:
             conn = IMAPClient(host, port=port, use_uid=True, ssl=True)
-        except IMAPClient.AbortError as e:
+        except (IMAPClient.Error, socket.error) as exc:
             log.error('account_connect_failed',
-                      account_id=account_id,
-                      email=email,
-                      host=host,
-                      port=port,
-                      error="[ALERT] Can't connect to host - may be transient")
-            raise TransientConnectionError(str(e))
-        except(IMAPClient.Error, gaierror, socket_error) as e:
-            log.error('account_connect_failed',
-                      account_id=account_id,
-                      email=email,
-                      host=host,
-                      port=port,
-                      error='[ALERT] (Failure): {0}'.format(str(e)))
-            raise ConnectionError(str(e))
+                      account_id=account.id,
+                      email=account.email_address,
+                      imap_host=host,
+                      imap_port=port,
+                      error=exc)
+            raise
 
-        conn.debug = False
         try:
-            conn.oauth2_login(email, pw)
-        except IMAPClient.AbortError as e:
-            log.error('account_verify_failed',
-                      account_id=account_id,
-                      email=email,
+            token = token_manager.get_token(account)
+            conn.oauth2_login(account.email_address, token)
+        except IMAPClient.Error as exc:
+            log.error('IMAP Login error during connection; refreshing token',
+                      account_id=account.id,
+                      email=account.email_address,
                       host=host,
                       port=port,
-                      error="[ALERT] Can't connect to host - may be transient")
-            raise TransientConnectionError(str(e))
-        except IMAPClient.Error as e:
-            log.error('IMAP Login error during connection. '
-                      'Account: {}, error: {}'.format(email, e),
-                      account_id=account_id)
-            if (str(e) == '[ALERT] Invalid credentials (Failure)' or
-                    str(e).startswith('[AUTHENTICATIONFAILED]') or
-                    str(e).startswith('[AUTHORIZATIONFAILED]')):
-                raise ValidationError(str(e))
-            else:
-                raise ConnectionError(str(e))
-        except SSLError as e:
-            log.error('account_verify_failed',
-                      account_id=account_id,
-                      email=email,
-                      host=host,
-                      port=port,
-                      error='[ALERT] (Failure) SSL Connection error')
-            raise ConnectionError(str(e))
-
+                      error=exc)
         return conn
 
     def verify_account(self, account):
-        """Verifies a IMAP account by logging in."""
-        try:
-            access_token = token_manager.get_token(account)
-            conn = self.connect_account(account.email_address,
-                                        access_token,
-                                        account.imap_endpoint,
-                                        account.id)
-            conn.logout()
-        except ValidationError:
-            # Access token could've expired, refresh and try again.
-            access_token = token_manager.get_token(account, force_refresh=True)
-            conn = self.connect_account(account.email_address,
-                                        access_token,
-                                        account.imap_endpoint,
-                                        account.id)
-            conn.logout()
-
+        """Verifies an IMAP account by logging in."""
+        conn = self.connect_account(account)
+        conn.logout()
         return True
-
-    def validate_token(self, access_token):
-        """Implemented by subclasses."""
-        raise NotImplementedError
 
     def new_token(self, refresh_token, client_id=None, client_secret=None):
         if not refresh_token:
@@ -109,31 +53,38 @@ class OAuthAuthHandler(AuthHandler):
         client_secret = client_secret or self.OAUTH_CLIENT_SECRET
         access_token_url = self.OAUTH_ACCESS_TOKEN_URL
 
-        args = {
+        data = urllib.urlencode({
             'refresh_token': refresh_token,
             'client_id': client_id,
             'client_secret': client_secret,
             'grant_type': 'refresh_token'
-        }
-
+        })
+        headers = {'Content-type': 'application/x-www-form-urlencoded',
+                   'Accept': 'text/plain'}
         try:
-            headers = {'Content-type': 'application/x-www-form-urlencoded',
-                       'Accept': 'text/plain'}
-            data = urllib.urlencode(args)
             response = requests.post(access_token_url, data=data,
                                      headers=headers)
-        except (requests.exceptions.HTTPError,
-                requests.exceptions.ConnectionError), e:
-            log.error(e)
+        except requests.exceptions.ConnectionError as e:
+            log.error('Network error renewing access token', error=e)
             raise ConnectionError()
 
         try:
             session_dict = response.json()
         except JSONDecodeError:
-            raise ConnectionError("Invalid json: " + response.text)
+            log.error('Invalid JSON renewing access token',
+                      response=response.text)
+            raise ConnectionError('Invalid JSON renewing access token')
 
-        if u'error' in session_dict:
-            raise OAuthError(session_dict['error'])
+        if 'error' in session_dict:
+            if session_dict['error'] == 'invalid_grant':
+                # This is raised if the user has revoked access to the
+                # application (or if the refresh token is otherwise invalid).
+                raise OAuthError('invalid_grant')
+            else:
+                # You can also get {"error": "internal_failure"}
+                log.error('Error renewing access token',
+                          session_dict=session_dict)
+                raise ConnectionError('Server error renewing access token')
 
         return session_dict['access_token'], session_dict['expires_in']
 

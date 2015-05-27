@@ -1,8 +1,7 @@
 import datetime
 import getpass
 from imapclient import IMAPClient
-from socket import gaierror, error as socket_error
-from ssl import SSLError
+import socket
 
 import sqlalchemy.orm.exc
 
@@ -11,9 +10,7 @@ log = get_logger()
 
 from inbox.auth.base import AuthHandler
 import inbox.auth.starttls
-from inbox.basicauth import (ConnectionError, ValidationError,
-                             TransientConnectionError,
-                             UserRecoverableConfigError)
+from inbox.basicauth import ValidationError, UserRecoverableConfigError
 from inbox.models import Namespace
 from inbox.models.backends.generic import GenericAccount
 from inbox.providers import provider_info
@@ -49,85 +46,49 @@ class GenericAuthHandler(AuthHandler):
 
         return account
 
-    def connect_account(self, email, credential, imap_endpoint,
-                        account_id=None):
-        """Provide a connection to a generic IMAP account.
-
-        Raises
-        ------
-        ConnectionError
-            If we cannot connect to the IMAP host.
-        TransientConnectionError
-            Sometimes the server bails out on us. Retrying may
-            fix things.
-        ValidationError
-            If the credentials are invalid.
+    def connect_account(self, account):
+        """STOPSHIP(emfree) fix documentation
         """
-        host, port = imap_endpoint
+        host, port = account.imap_endpoint
         try:
             conn = IMAPClient(host, port=port, use_uid=True, ssl=(port == 993))
             if port != 993:
                 # Raises an exception if TLS can't be established
                 conn._imap.starttls()
-        except IMAPClient.AbortError as e:
+        except (IMAPClient.Error, socket.error) as exc:
             log.error('account_connect_failed',
-                      account_id=account_id,
-                      email=email,
+                      account_id=account.id,
+                      email=account.email_address,
                       host=host,
                       port=port,
-                      error="[ALERT] Can't connect to host - may be transient")
-            raise TransientConnectionError(str(e))
-        except(IMAPClient.Error, gaierror, socket_error) as e:
-            log.error('account_connect_failed',
-                      account_id=account_id,
-                      email=email,
-                      host=host,
-                      port=port,
-                      error='[ALERT] (Failure): {0}'.format(str(e)))
-            raise ConnectionError(str(e))
+                      error=exc)
+            raise
 
         try:
-            conn.login(email, credential)
-        except IMAPClient.AbortError as e:
-            log.error('account_verify_failed',
-                      account_id=account_id,
-                      email=email,
-                      host=host,
-                      port=port,
-                      error="[ALERT] Can't connect to host - may be transient")
-            raise TransientConnectionError(str(e))
-        except IMAPClient.Error as e:
+            conn.login(account.email_address, account.password)
+        except IMAPClient.Error as exc:
             # Providers like Yahoo sometimes throw harmless
             # invalid connection errors.
             error_msgs = provider_info(
                 self.provider_name).get('transient_error_messages', [])
 
-            if str(e) in error_msgs:
+            if str(exc) in error_msgs:
                 log.warning('account_verify_failed',
-                            account_id=account_id,
-                            email=email,
+                            account_id=account.id,
+                            email=account.email_address,
                             host=host,
                             port=port,
-                            error='Transient auth error',
-                            transient_message=str(e))
-                raise TransientConnectionError(str(e))
+                            error=exc)
+                raise
             else:
+                # STOPSHIP(emfree): we should really retry in this case too.
                 log.error('account_verify_failed',
-                          account_id=account_id,
-                          email=email,
+                          account_id=account.id,
+                          email=account.email_address,
                           host=host,
                           port=port,
                           error='[ALERT] Invalid credentials (Failure)')
-                raise ValidationError(str(e))
-        except SSLError as e:
-            log.error('account_verify_failed',
-                      account_id=account_id,
-                      email=email,
-                      host=host,
-                      port=port,
-                      error='[ALERT] SSL Connection error (Failure)')
-            raise ConnectionError(str(e))
-
+                raise ValidationError(str(exc))
         return conn
 
     def _supports_condstore(self, conn):
@@ -152,9 +113,7 @@ class GenericAuthHandler(AuthHandler):
         -------
         True: If the client can successfully connect.
         """
-        conn = self.connect_account(account.email_address,
-                                    account.password,
-                                    account.imap_endpoint)
+        conn = self.connect_account(account)
         info = account.provider_info
         if "condstore" not in info:
             if self._supports_condstore(conn):
