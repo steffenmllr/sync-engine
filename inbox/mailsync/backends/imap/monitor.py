@@ -59,18 +59,20 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
 
     @retry_crispin
     def prepare_sync(self):
-        """Ensures that canonical tags are created for the account, and gets
+        """
+        Ensures that canonical tags are created for the account, and gets
         and save Folder objects for folders on the IMAP backend. Returns a list
         of tuples (folder_name, folder_id) for each folder we want to sync (in
-        order)."""
+        order).
+
+        """
         with mailsync_session_scope() as db_session:
             with connection_pool(self.account_id).get() as crispin_client:
-                # the folders we should be syncing
+                # Get a fresh list of the folder names from the remote
+                remote_folders = crispin_client.folders()
+                save_folder_names(db_session, self.account_id, remote_folders)
+                # The folders we should be syncing
                 sync_folders = crispin_client.sync_folders()
-                # get a fresh list of the folder names from the remote
-                remote_folders = crispin_client.folder_names(force_resync=True)
-                save_folder_names(log, self.account_id,
-                                  remote_folders, db_session)
 
             sync_folder_names_ids = []
             for folder_name in sync_folders:
@@ -80,7 +82,7 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
                                Folder.account_id == self.account_id).one()
                     sync_folder_names_ids.append((folder_name, id_))
                 except NoResultFound:
-                    log.error("Missing Folder object when starting sync",
+                    log.error('Missing Folder object when starting sync',
                               folder_name=folder_name)
                     raise MailsyncError("Missing Folder '{}' on account {}"
                                         .format(folder_name, self.account_id))

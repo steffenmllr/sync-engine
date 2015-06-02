@@ -55,8 +55,8 @@ def transaction_objects():
     models that implement the HasRevisions mixin).
 
     """
-    from inbox.models import (Calendar, Contact, Message, Event, Block, Tag,
-                              Thread)
+    from inbox.models import (Calendar, Contact, Message, Event, Block,
+                              Category, Thread)
 
     return {
         'calendar': Calendar,
@@ -65,7 +65,7 @@ def transaction_objects():
         'event': Event,
         'file': Block,
         'message': Message,
-        'tag': Tag,
+        'category': Category,
         'thread': Thread
     }
 

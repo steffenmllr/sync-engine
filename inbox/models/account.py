@@ -18,13 +18,13 @@ from inbox.providers import provider_info
 class Account(MailSyncBase, HasPublicID, HasEmailAddress, HasRunState):
     @property
     def provider(self):
-        """ A constant, unique lowercase identifier for the account provider
+        """
+        A constant, unique lowercase identifier for the account provider
         (e.g., 'gmail', 'eas'). Subclasses should override this.
 
         We prefix provider folders with this string when we expose them as
         tags through the API. E.g., a 'jobs' folder/label on a Gmail
-        backend is exposed as 'gmail-jobs'. Any value returned here
-        should also be in Tag.RESERVED_PROVIDER_NAMES.
+        backend is exposed as 'gmail-jobs'.
 
         """
         raise NotImplementedError

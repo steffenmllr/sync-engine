@@ -35,18 +35,14 @@ from inbox.models.action_log import schedule_action, ActionError
 from inbox.models.session import InboxSession
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
-
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            ConflictError)
-
 from inbox.ignition import main_engine
 engine = main_engine()
-
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 1000
 LONG_POLL_REQUEST_TIMEOUT = 120
-
 
 app = Blueprint(
     'namespace_api',

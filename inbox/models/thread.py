@@ -1,21 +1,16 @@
 import itertools
 from collections import defaultdict
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index
-from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy import (Column, Integer, String, DateTime, ForeignKey, Index,
+                        Boolean)
 from sqlalchemy.orm import relationship, backref, validates, object_session
+from sqlalchemy.sql.expression import false
 
 from inbox.log import get_logger
 log = get_logger()
-
 from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.base import MailSyncBase
 from inbox.models.namespace import Namespace
-
-from inbox.models.action_log import schedule_action_for_tag
-from inbox.models.folder import FolderItem
-from inbox.models.tag import Tag
-
 from inbox.util.misc import cleanup_subject
 
 
@@ -32,19 +27,23 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
 
     """
     API_OBJECT_NAME = 'thread'
+
+    namespace_id = Column(ForeignKey(Namespace.id, ondelete='CASCADE'),
+                          nullable=False, index=True)
+    namespace = relationship('Namespace',
+                             backref=backref('threads', passive_deletes=True),
+                             load_on_pending=True)
+
     subject = Column(String(255), nullable=True)
     # a column with the cleaned up version of a subject string, to speed up
     # threading queries.
     _cleaned_subject = Column(String(255), nullable=True)
-
     subjectdate = Column(DateTime, nullable=False, index=True)
     recentdate = Column(DateTime, nullable=False, index=True)
     snippet = Column(String(191), nullable=True, default='')
     version = Column(Integer, nullable=True, server_default='0')
-
-    folders = association_proxy(
-        'folderitems', 'folder',
-        creator=lambda folder: FolderItem(folder=folder))
+    unread = Column(Boolean, server_default=false(), nullable=False)
+    starred = Column(Boolean, server_default=false(), nullable=False)
 
     @validates('subject')
     def compute_cleaned_up_subject(self, key, value):
@@ -54,10 +53,6 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
     @validates('messages')
     def update_from_message(self, k, message):
         with object_session(self).no_autoflush:
-            if message.attachments:
-                attachment_tag = self.namespace.tags['attachment']
-                self.tags.add(attachment_tag)
-
             if message.is_draft:
                 # Don't change subjectdate, recentdate, or unread/unseen based
                 # on drafts
@@ -65,61 +60,21 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
 
             if message.received_date > self.recentdate:
                 self.recentdate = message.received_date
-                # Only update the thread's unread/unseen properties if this is
-                # the most recent message we have synced in the thread.
-                # This is so that if a user has already marked the thread as
-                # read or seen via the API, but we later sync older messages in
-                # the thread, it doesn't become re-unseen.
-                unread_tag = self.namespace.tags['unread']
-                unseen_tag = self.namespace.tags['unseen']
-                if message.is_read:
-                    self.tags.discard(unread_tag)
-                    self.tags.discard(unseen_tag)
-                else:
-                    self.tags.add(unread_tag)
-                    self.tags.add(unseen_tag)
                 self.snippet = message.snippet
 
-            # subject is subject of original message in the thread
+            # Subject is subject of original message in the thread
             if message.received_date < self.subjectdate:
                 self.subject = message.subject
                 self.subjectdate = message.received_date
 
+            self.unread = (not self.unread or message.is_read)
+            self.starred = (self.starred or message.is_starred)
+
             return message
-
-    @validates('folderitems', include_removes=True)
-    def also_set_tag(self, key, folderitem, is_remove):
-        # Also add or remove the associated tag whenever a folder is added or
-        # removed.
-        with object_session(self).no_autoflush:
-            folder = folderitem.folder
-            tag = folder.get_associated_tag(object_session(self))
-            if is_remove:
-                self.tags.discard(tag)
-            else:
-                self.tags.add(tag)
-        return folderitem
-
-    folderitems = relationship(
-        FolderItem,
-        backref=backref('thread', uselist=False),
-        single_parent=True,
-        collection_class=set,
-        cascade='all, delete-orphan')
-
-    tags = association_proxy(
-        'tagitems', 'tag',
-        creator=lambda tag: TagItem(tag=tag))
 
     @property
     def versioned_relationships(self):
-        return ['tagitems', 'messages']
-
-    namespace_id = Column(ForeignKey(Namespace.id, ondelete='CASCADE'),
-                          nullable=False, index=True)
-    namespace = relationship('Namespace',
-                             backref=backref('threads', passive_deletes=True),
-                             load_on_pending=True)
+        return ['messages']
 
     @property
     def participants(self):
@@ -145,98 +100,6 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
                     p.append((phrase, address))
         return p
 
-    def apply_tag(self, tag, execute_action=False):
-        """
-        Add the given Tag instance to this thread. Does nothing if the tag
-        is already applied. Contains extra logic for validating input and
-        triggering dependent changes. Callers should use this method instead of
-        directly calling Thread.tags.add(tag).
-
-        Parameters
-        ----------
-        tag: Tag instance
-        execute_action: bool
-            True if adding the tag should trigger a syncback action.
-
-        """
-        if tag not in self.tags:
-            self.tags.add(tag)
-
-        if execute_action:
-            schedule_action_for_tag(tag.public_id, self, object_session(self),
-                                    tag_added=True)
-
-        # Add or remove dependent tags.
-        inbox_tag = self.namespace.tags['inbox']
-        archive_tag = self.namespace.tags['archive']
-        sent_tag = self.namespace.tags['sent']
-        drafts_tag = self.namespace.tags['drafts']
-        spam_tag = self.namespace.tags['spam']
-        trash_tag = self.namespace.tags['trash']
-
-        if tag == inbox_tag:
-            self.tags.discard(archive_tag)
-        elif tag == archive_tag:
-            self.tags.discard(inbox_tag)
-        elif tag == sent_tag:
-            self.tags.discard(drafts_tag)
-        elif tag == spam_tag:
-            self.tags.discard(inbox_tag)
-        elif tag == trash_tag:
-            self.tags.discard(inbox_tag)
-
-        if execute_action:
-            unread_tag = self.namespace.tags['unread']
-            if tag == unread_tag:
-                for message in self.messages:
-                    message.is_read = False
-
-    def remove_tag(self, tag, execute_action=False):
-        """
-        Remove the given Tag instance from this thread. Does nothing if the
-        tag isn't present. Contains extra logic for validating input and
-        triggering dependent changes. Callers should use this method instead of
-        directly calling Thread.tags.discard(tag).
-
-        Parameters
-        ----------
-        tag: Tag instance
-        execute_action: bool
-            True if removing the tag should trigger a syncback action.
-
-        """
-        if tag not in self.tags:
-            return
-        self.tags.remove(tag)
-
-        if execute_action:
-            schedule_action_for_tag(tag.public_id, self, object_session(self),
-                                    tag_added=False)
-
-        # Add or remove dependent tags.
-        inbox_tag = self.namespace.tags['inbox']
-        archive_tag = self.namespace.tags['archive']
-        unread_tag = self.namespace.tags['unread']
-        unseen_tag = self.namespace.tags['unseen']
-        spam_tag = self.namespace.tags['spam']
-        trash_tag = self.namespace.tags['trash']
-        if tag == unread_tag:
-            # Remove the 'unseen' tag when the unread tag is removed.
-            self.tags.discard(unseen_tag)
-        if tag == inbox_tag:
-            self.tags.add(archive_tag)
-        elif tag == archive_tag:
-            self.tags.add(inbox_tag)
-        elif tag == trash_tag:
-            self.tags.add(inbox_tag)
-        elif tag == spam_tag:
-            self.tags.add(inbox_tag)
-
-        if execute_action:
-            if tag == unread_tag:
-                for message in self.messages:
-                    message.is_read = True
-
     @property
     def drafts(self):
         """
@@ -245,40 +108,41 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
         """
         return [m for m in self.messages if m.is_draft]
 
+    @property
+    def attachments(self):
+        return any(m.attachments for m in self.messages)
+
+    def update_metadata(self, session):
+        if any(m.is_read for m in self.messages):
+            self.unread = False
+
+        if any(m.is_starred for m in self.messages):
+            self.starred = True
+
+    @property
+    def categories(self):
+        categories = set()
+        for m in self.messages:
+            categories.update(m.categories)
+        return categories
+
+    def add_category(self, category, execute_action=False):
+        # TODO[k]
+        pass
+
+    def remove_category(self, category, execute_action=False):
+        # TODO[k]
+        pass
+
     discriminator = Column('type', String(16))
     __mapper_args__ = {'polymorphic_on': discriminator}
-
 
 # The /threads API endpoint filters on namespace_id and deleted_at, then orders
 # by recentdate; add an explicit index to persuade MySQL to do this in a
 # somewhat performant manner.
 Index('ix_thread_namespace_id_recentdate_deleted_at',
       Thread.namespace_id, Thread.recentdate, Thread.deleted_at)
-
 # Need to explicitly specify the index length for MySQL 5.6, because the
 # subject column is too long to be fully indexed with utf8mb4 collation.
 Index('ix_thread_subject', Thread.subject, mysql_length=191)
 Index('ix_cleaned_subject', Thread._cleaned_subject, mysql_length=191)
-
-
-class TagItem(MailSyncBase):
-    """Mapping between user tags and threads."""
-    thread_id = Column(Integer, ForeignKey(Thread.id,
-                                           ondelete='CASCADE'), nullable=False)
-    tag_id = Column(Integer, ForeignKey(Tag.id,
-                                        ondelete='CASCADE'), nullable=False)
-    thread = relationship(
-        'Thread',
-        backref=backref('tagitems',
-                        collection_class=set,
-                        cascade='all, delete-orphan'))
-    tag = relationship(
-        Tag,
-        backref=backref('tagitems',
-                        cascade='all, delete-orphan', lazy='dynamic'))
-
-    @property
-    def namespace(self):
-        return self.thread.namespace
-
-Index("tag_thread_ids", TagItem.thread_id, TagItem.tag_id)

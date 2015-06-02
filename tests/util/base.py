@@ -70,6 +70,13 @@ def db(request, config):
     testdb.teardown()
 
 
+@yield_fixture(scope='function')
+def empty_db(request, config):
+    testdb = TestDB(config, None)
+    yield testdb
+    testdb.teardown()
+
+
 def mock_redis_client(*args, **kwargs):
     return None
 
@@ -147,16 +154,19 @@ class TestDB(object):
         from inbox.models.session import InboxSession
         from inbox.ignition import main_engine
         engine = main_engine()
+
         # Set up test database
         self.session = InboxSession(engine)
         self.engine = engine
         self.config = config
-        self.dumpfile = dumpfile
 
         # Populate with test data
-        self.populate()
+        if dumpfile:
+            self.populate(dumpfile)
+        else:
+            self.recreate()
 
-    def populate(self):
+    def populate(self, dumpfile):
         """ Populates database with data from the test dumpfile. """
         database = self.config.get('MYSQL_DATABASE')
         user = self.config.get('MYSQL_USER')
@@ -165,8 +175,24 @@ class TestDB(object):
         port = self.config.get('MYSQL_PORT')
 
         cmd = 'mysql {0} -h{1} -P{2} -u{3} -p{4} < {5}'. \
-            format(database, hostname, port, user, password, self.dumpfile)
+            format(database, hostname, port, user, password, dumpfile)
         subprocess.check_call(cmd, shell=True)
+
+    def recreate(self):
+        """
+        Creates a new, empty test database with table structure generated
+        from declarative model classes.
+
+        """
+        from inbox.ignition import init_db
+
+        db_invocation = 'DROP DATABASE IF EXISTS test; ' \
+                        'CREATE DATABASE IF NOT EXISTS test ' \
+                        'DEFAULT CHARACTER SET utf8mb4 DEFAULT COLLATE ' \
+                        'utf8mb4_general_ci'
+        subprocess.check_call('mysql -uinboxtest -pinboxtest '
+                              '-e "{}"'.format(db_invocation), shell=True)
+        init_db(self.engine)
 
     def teardown(self):
         """
@@ -231,6 +257,28 @@ def generic_account(db):
     db.session.add(acc)
     db.session.commit()
     return acc
+
+
+@fixture(scope='function')
+def gmail_account(db):
+    import platform
+    from inbox.models import Namespace
+    from inbox.models.backends.gmail import GmailAccount
+
+    account = db.session.query(GmailAccount).first()
+    if account is None:
+        with db.session.no_autoflush:
+            namespace = Namespace()
+            account = GmailAccount(
+                email_address='almondsunshine@gmail.com',
+                refresh_token='tearsofgold',
+                sync_host=platform.node(),
+                namespace=namespace)
+            account.password = 'COyPtHmj9E9bvGdN'
+            db.session.add(account)
+    db.session.commit()
+
+    return account
 
 
 @fixture(scope='function')

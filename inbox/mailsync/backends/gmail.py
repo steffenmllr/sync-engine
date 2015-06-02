@@ -62,7 +62,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
         self.saved_uids = set()
 
     def is_all_mail(self, crispin_client):
-        return self.folder_name == crispin_client.folder_names()['all']
+        return self.folder_name in crispin_client.folder_names()['all']
 
     def should_idle(self, crispin_client):
         return self.is_all_mail(crispin_client)
@@ -145,8 +145,9 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
                          joinedload('message').load_only('g_msgid'))\
                 .filter_by(account_id=self.account_id,
                            folder_id=self.folder_id)
-            CHUNK_SIZE = 1000
-            for entry in imap_uid_entries.yield_per(CHUNK_SIZE):
+
+            chunk_size = 1000
+            for entry in imap_uid_entries.yield_per(chunk_size):
                 if entry.message.g_msgid in mapping:
                     log.debug('X-GM-MSGID {} from UID {} to UID {}'.format(
                         entry.message.g_msgid,
@@ -211,7 +212,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
             # Since we always download messages via All Mail and create the
             # relevant All Mail ImapUids too at that time, we don't need to
             # create them again here if we're deduping All Mail downloads.
-            if crispin_client.selected_folder_name != \
+            if crispin_client.selected_folder_name not in \
                     crispin_client.folder_names()['all']:
                 add_new_imapuids(crispin_client, remote_g_metadata,
                                  self.syncmanager_lock, imapuid_only)
@@ -231,18 +232,14 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
         # thread_id, causing a crash, and so that we don't flush on each
         # added/removed label.
         with db_session.no_autoflush:
-            new_uid.message.g_msgid = msg.g_msgid
             # NOTE: g_thrid == g_msgid on the first message in the thread :)
+            new_uid.message.g_msgid = msg.g_msgid
             new_uid.message.g_thrid = msg.g_thrid
 
-            # we rely on Gmail's threading instead of our threading algorithm.
-            new_uid.update_flags_and_labels(msg.flags, msg.g_labels)
-
-            thread = new_uid.message.thread = ImapThread.from_gmail_message(
+            # We rely on Gmail's threading instead of our threading algorithm.
+            new_uid.message.thread = ImapThread.from_gmail_message(
                 db_session, new_uid.account.namespace, new_uid.message)
 
-        # make sure this thread has all the correct labels
-        common.add_any_new_thread_labels(thread, new_uid, db_session)
         return new_uid
 
     def download_and_commit_uids(self, crispin_client, folder_name, uids):
@@ -399,7 +396,7 @@ def add_new_imapuids(crispin_client, remote_g_metadata, syncmanager_lock,
                                         acc.namespace.id)])
 
                 # Stop Folder.find_or_create()'s query from triggering a flush.
-                with db_session.no_autoflush:
+                with db_session.no_autoflush as session:
                     new_imapuids = [ImapUid(
                         account=acc,
                         folder=Folder.find_or_create(
@@ -407,22 +404,14 @@ def add_new_imapuids(crispin_client, remote_g_metadata, syncmanager_lock,
                             crispin_client.selected_folder_name),
                         msg_uid=uid, message=message_for[uid]) for uid in uids
                         if uid in message_for]
-                    for item in new_imapuids:
-                        # skip uids which have disappeared in the meantime
-                        if item.msg_uid in flags:
-                            item.update_flags_and_labels(
-                                flags[item.msg_uid].flags,
-                                flags[item.msg_uid].labels)
+                    for uid in new_imapuids:
+                        # Skip uids which have disappeared in the meantime
+                        if uid.msg_uid in flags:
+                            uid.update_flags_and_labels(
+                                flags[uid.msg_uid].flags,
+                                flags[uid.msg_uid].labels)
 
-                            item.message.is_draft = item.is_draft
-                            common.update_unread_status(item)
+                            common.update_message_thread_metadata(session, uid)
+
                 db_session.add_all(new_imapuids)
-                db_session.flush()
-
-                # Don't forget to update thread labels.
-                messages = set(message_for.values())
-                unique_threads = set([message.thread for message in messages])
-
-                for thread in unique_threads:
-                    common.recompute_thread_labels(thread, db_session)
                 db_session.commit()
