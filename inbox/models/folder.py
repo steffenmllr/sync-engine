@@ -1,21 +1,19 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.schema import UniqueConstraint
-from inbox.sqlalchemy_ext.util import generate_public_id
-from sqlalchemy.sql.expression import false
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from inbox.models.base import MailSyncBase
-from inbox.models.mixins import HasRevisions
-from inbox.models.constants import MAX_FOLDER_NAME_LENGTH, MAX_INDEXABLE_LENGTH
+from inbox.models.mixins import HasRevisions, Category
+from inbox.models.constants import MAX_FOLDER_NAME_LENGTH
 from inbox.log import get_logger
 log = get_logger()
 
 
-class Folder(MailSyncBase, HasRevisions):
+class Folder(MailSyncBase, HasRevisions, Category):
     """ Folders and labels from the remote account backend (IMAP/Exchange). """
-    API_OBJECT_NAME = 'folder'
+    API_OBJECT_NAME = 'category'
 
     # `use_alter` required here to avoid circular dependency w/Account
     account_id = Column(Integer,
@@ -36,32 +34,10 @@ class Folder(MailSyncBase, HasRevisions):
         foreign_keys=[account_id],
         load_on_pending=True)
 
-    public_id = Column(String(MAX_INDEXABLE_LENGTH), nullable=False,
-                       default=generate_public_id)
-
-    # Set the name column to be case sensitive, which isn't the default for
-    # MySQL. This is a requirement since IMAP allows users to create both a
-    # 'Test' and a 'test' (or a 'tEST' for what we care) folders.
-    # NOTE: this doesn't hold for EAS, which is case insensitive for non-Inbox
-    # folders as per
-    # https://msdn.microsoft.com/en-us/library/ee624913(v=exchg.80).aspx
-    name = Column(String(MAX_FOLDER_NAME_LENGTH,
-                         collation='utf8mb4_bin'), nullable=True)
-    canonical_name = Column(String(MAX_FOLDER_NAME_LENGTH), nullable=True)
     # We use an additional identifier for certain providers,
     # for e.g. EAS uses it to store the eas_folder_id
     # DEPRECATED
     identifier = Column(String(MAX_FOLDER_NAME_LENGTH), nullable=True)
-
-    user_created = Column(Boolean, server_default=false(), nullable=False)
-
-    @property
-    def lowercase_name(self):
-        return self.name.lower() if self.name else None
-
-    @property
-    def namespace(self):
-        return self.account.namespace
 
     @classmethod
     def find_or_create(cls, session, account, name, canonical_name=None):

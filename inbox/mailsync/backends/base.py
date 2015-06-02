@@ -115,7 +115,7 @@ def save_folder_names(log, account_id, folder_names, db_session):
                          folder_names['labels']]
         local_labels = dict((label.name, label) for label in
                             db_session.query(Label).filter(
-                            Label.namespace_id == account.namespace.id).all())
+                            Label.account_id == account.id).all())
 
         add = set(remote_labels) - set(local_labels.keys())
         for name in add:

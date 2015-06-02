@@ -483,19 +483,14 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         return self.namespace.account
 
     @property
-    def folders(self):
-        if self.account.discriminator == 'imapaccount':
-            return {imapuid.folder for imapuid in self.imapuids}
-        # TODO[k]: Adapt to EAS
-        return set()
-
-    @property
-    def labels(self):
-        labels = set()
+    def categories(self):
+        categories = set()
         if self.account.discriminator == 'imapaccount':
             for imapuid in self.imapuids:
-                labels.update(imapuid.labels)
-        return labels
+                categories.add(imapuid.folder)
+                categories.update(imapuid.labels)
+        # TODO[k]: Adapt to EAS
+        return categories
 
 # Need to explicitly specify the index length for table generation with MySQL
 # 5.6 when columns are too long to be fully indexed with utf8mb4 collation.

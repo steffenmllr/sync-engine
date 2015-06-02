@@ -109,18 +109,11 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
         return [m for m in self.messages if m.is_draft]
 
     @property
-    def folders(self):
-        folders = set()
+    def categories(self):
+        categories = set()
         for m in self.messages:
-            folders.update(m.folders)
-        return folders
-
-    @property
-    def labels(self):
-        labels = set()
-        for m in self.messages:
-            labels.update(m.labels)
-        return labels
+            categories.update(m.categories)
+        return categories
 
     @property
     def attachments(self):

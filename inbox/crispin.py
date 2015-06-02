@@ -467,11 +467,11 @@ class CrispinClient(object):
 
         for uid in uid_set:
             try:
-                raw_messages.update(self.conn.fetch(uid,
-                   ['BODY.PEEK[] INTERNALDATE FLAGS']))
+                raw_messages.update(
+                    self.conn.fetch(uid, ['BODY.PEEK[] INTERNALDATE FLAGS']))
             except imapclient.IMAPClient.Error as e:
                 if ('[UNAVAILABLE] UID FETCH Server error '
-                    'while fetching messages') in str(e):
+                        'while fetching messages') in str(e):
                     self.log.info('Got an exception while requesting an UID',
                                   uid=uid, error=e,
                                   logstash_tag='imap_download_exception')

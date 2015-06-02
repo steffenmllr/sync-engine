@@ -160,7 +160,7 @@ class ImapUid(MailSyncBase):
             remove = set(local_labels) - set(new_labels)
             if remove:
                 for label in session.query(Label).filter(
-                        Label.namespace_id == self.account.namespace.id,
+                        Label.account_id == self.account.id,
                         Label.name.in_(remove)).all():
                     self.remove_label(label)
 

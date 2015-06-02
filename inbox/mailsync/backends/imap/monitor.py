@@ -59,10 +59,13 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
 
     @retry_crispin
     def prepare_sync(self):
-        """Ensures that canonical tags are created for the account, and gets
+        """
+        Ensures that canonical tags are created for the account, and gets
         and save Folder objects for folders on the IMAP backend. Returns a list
         of tuples (folder_name, folder_id) for each folder we want to sync (in
-        order)."""
+        order).
+
+        """
         with mailsync_session_scope() as db_session:
             with connection_pool(self.account_id).get() as crispin_client:
                 # the folders we should be syncing
