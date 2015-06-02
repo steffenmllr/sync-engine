@@ -14,8 +14,10 @@ from inbox.models.mixins import HasRevisions
 from inbox.models.namespace import Namespace
 
 
+# FIXFIXFIX[k]: Move to mixin for Folder/ Label
 class Tag(MailSyncBase, HasRevisions):
-    """Tags represent extra data associated with threads.
+    """
+    Tags represent extra data associated with threads.
 
     A note about the schema. The 'public_id' of a tag is immutable. For
     reserved tags such as the inbox or starred tag, the public_id is a fixed
@@ -27,6 +29,7 @@ class Tag(MailSyncBase, HasRevisions):
     that users wish to change the name of user-created labels, or that we
     someday expose localized names ('DAS INBOX'), or that we somehow manage to
     sync renamed gmail labels, etc.
+
     """
     API_OBJECT_NAME = 'tag'
     namespace = relationship(

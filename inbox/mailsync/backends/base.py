@@ -6,8 +6,9 @@ log = get_logger()
 from inbox.util.debug import bind_context
 from inbox.util.concurrency import retry_and_report_killed
 from inbox.util.itert import partition
-from inbox.models import Account, Folder
-from inbox.models.constants import MAX_FOLDER_NAME_LENGTH
+from inbox.models import Account, Folder, Label
+from inbox.models.constants import (MAX_FOLDER_NAME_LENGTH,
+                                    MAX_LABEL_NAME_LENGTH)
 from inbox.models.session import session_scope
 from inbox.mailsync.exc import SyncException
 from inbox.heartbeat.status import clear_heartbeat_status
@@ -42,8 +43,8 @@ def save_folder_names(log, account_id, folder_names, db_session):
     assert 'inbox' in folder_names, 'Account {} has no detected inbox folder'\
         .format(account.email_address)
 
-    all_folders = db_session.query(Folder).filter_by(
-        account_id=account.id).all()
+    all_folders = db_session.query(Folder).filter(
+        Folder.account_id == account.id).all()
     # dangled_folders don't map to upstream account folders (may be used for
     # keeping track of e.g. special Gmail labels which are exposed as IMAP
     # flags but not folders)
@@ -51,6 +52,7 @@ def save_folder_names(log, account_id, folder_names, db_session):
     dangled_local_folders = {f.canonical_name: f for f in all_folders
                              if f.name is None}
 
+    # Inbox canonical folders
     canonical_names = {'inbox', 'drafts', 'sent', 'spam', 'trash',
                        'starred', 'important', 'archive', 'all'}
     for canonical_name in canonical_names:
@@ -69,7 +71,6 @@ def save_folder_names(log, account_id, folder_names, db_session):
                         if folder.name is not None:
                             del local_folders[folder.name]
                         folder.name = folder_names[canonical_name]
-                        folder.get_associated_tag(db_session)
                 attr_name = '{}_folder'.format(canonical_name)
                 id_attr_name = '{}_folder_id'.format(canonical_name)
                 if getattr(account, id_attr_name) != folder.id:
@@ -79,32 +80,52 @@ def save_folder_names(log, account_id, folder_names, db_session):
             else:
                 del local_folders[backend_folder_name]
 
-    # Gmail labels, user-created IMAP/EAS folders, etc.
+    # User-created IMAP/EAS folders
     if 'extra' in folder_names:
         for name in folder_names['extra']:
             # MySQL sanitization
             name = name[:MAX_FOLDER_NAME_LENGTH]
             name = name.rstrip()
             if name not in local_folders:
-                # This takes care of adding the folder to the session.
                 folder = Folder.find_or_create(db_session, account, name)
-                folder.get_associated_tag(db_session)
             else:
                 del local_folders[name]
 
     # This may cascade to FolderItems and ImapUid (ONLY), which is what we
-    # want--doing the update here short-circuits us syncing that change later.
-    if len(local_folders):
-        log.info("folders deleted from remote", folders=local_folders.keys())
-    for name, folder in local_folders.iteritems():
-        tag = folder.get_associated_tag(db_session, create_if_missing=False)
-        if tag:
-            if tag.name in tag.CANONICAL_TAG_NAMES:
-                log.warn("Canonical tag remotely deleted: {}".format(tag.name),
-                         account_id=account.id)
-            db_session.delete(tag)
-        db_session.delete(folder)
-        clear_heartbeat_status(account_id, folder.id)
+    # want- doing the update here short-circuits us syncing that change later.
+    if local_folders:
+        log.info('Folders deleted from remote', folders=local_folders.keys())
+
+        for name, folder in local_folders.iteritems():
+            if folder.canonical_name:
+                log.warn('Canonical folder remotely deleted', name=folder.name,
+                         canonical_name=folder.canonical_name,
+                         account_id=account_id)
+            db_session.delete(folder)
+
+            clear_heartbeat_status(account_id, folder.id)
+
+    # Gmail labels
+    if 'labels' in folder_names:
+        # FIXFIXFIX[k]: Deleting canonical label should cascade to LabelItems;
+        # would not currently because only folder version above would be
+        # deleted, not the label version created during sync.
+
+        remote_labels = [label[:MAX_LABEL_NAME_LENGTH] for label in
+                         folder_names['labels']]
+        local_labels = dict((label.name, label) for label in
+                            db_session.query(Label).filter(
+                            Label.namespace_id == account.namespace.id).all())
+
+        add = set(remote_labels) - set(local_labels.keys())
+        for name in add:
+            Label.find_or_create(db_session, account, name)
+
+        discard = set(local_labels.keys()) - set(remote_labels)
+        if discard:
+            log.info('Labels deleted from remote', labels=discard)
+            for name in discard:
+                db_session.delete(local_labels[name])
 
     db_session.commit()
 

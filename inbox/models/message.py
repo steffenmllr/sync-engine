@@ -73,6 +73,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     data_sha256 = Column(String(255), nullable=True)
 
     is_read = Column(Boolean, server_default=false(), nullable=False)
+    is_starred = Column(Boolean, server_default=false(), nullable=False)
 
     # For drafts (both Inbox-created and otherwise)
     is_draft = Column(Boolean, server_default=false(), nullable=False)
@@ -477,20 +478,35 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         return [part for part in self.parts
                 if part.block.content_type == 'text/calendar']
 
+    @property
+    def account(self):
+        return self.namespace.account
+
+    @property
+    def folders(self):
+        if self.account.discriminator == 'imapaccount':
+            return {imapuid.folder for imapuid in self.imapuids}
+        # TODO[k]: Adapt to EAS
+        return set()
+
+    @property
+    def labels(self):
+        labels = set()
+        if self.account.discriminator == 'imapaccount':
+            for imapuid in self.imapuids:
+                labels.update(imapuid.labels)
+        return labels
 
 # Need to explicitly specify the index length for table generation with MySQL
 # 5.6 when columns are too long to be fully indexed with utf8mb4 collation.
 Index('ix_message_subject', Message.subject, mysql_length=191)
 Index('ix_message_data_sha256', Message.data_sha256, mysql_length=191)
-
 # For API querying performance.
 Index('ix_message_ns_id_is_draft_received_date', Message.namespace_id,
       Message.is_draft, Message.received_date)
-
 # For async deletion.
 Index('ix_message_namespace_id_deleted_at', Message.namespace_id,
       Message.deleted_at)
-
 # For statistics about messages sent via Nylas
 Index('ix_message_namespace_id_is_created', Message.namespace_id,
       Message.is_created)

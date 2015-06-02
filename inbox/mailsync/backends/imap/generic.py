@@ -462,18 +462,16 @@ class FolderSyncEngine(Greenlet):
             if construct_new_thread:
                 new_uid.message.thread = ImapThread.from_imap_message(
                     db_session, new_uid.account.namespace, new_uid.message)
+                common.update_thread_attributes(db_session, new_uid)
             else:
                 parent_thread.messages.append(new_uid.message)
 
         db_session.flush()
-        # Make sure this thread has all the correct labels
-        common.add_any_new_thread_labels(new_uid.message.thread, new_uid,
-                                         db_session)
-        new_uid.update_flags_and_labels(msg.flags)
         return new_uid
 
     def remove_deleted_uids(self, db_session, local_uids, remote_uids):
-        """ Remove imapuid entries that no longer exist on the remote.
+        """
+        Remove imapuid entries that no longer exist on the remote.
 
         Works as follows:
             1. Do a LIST on the current folder to see what messages are on the
@@ -484,7 +482,9 @@ class FolderSyncEngine(Greenlet):
 
         Make SURE to be holding `syncmanager_lock` when calling this function;
         we do not grab it here to allow callers to lock higher level
-        functionality.  """
+        functionality.
+
+        """
         to_delete = set(local_uids) - set(remote_uids)
         common.remove_deleted_uids(self.account_id, db_session, to_delete,
                                    self.folder_id)
@@ -506,7 +506,6 @@ class FolderSyncEngine(Greenlet):
 
     def update_metadata(self, crispin_client, updated):
         """ Update flags (the only metadata that can change). """
-
         # bigger chunk because the data being fetched here is very small
         for uids in chunk(updated, 5 * crispin_client.CHUNK_SIZE):
             new_flags = crispin_client.flags(uids)
@@ -596,7 +595,6 @@ def safe_download(crispin_client, uids):
 def report_progress(account_id, folder_name, downloaded_uid_count,
                     num_remaining_messages):
     """ Inform listeners of sync progress. """
-
     with mailsync_session_scope() as db_session:
         saved_status = db_session.query(ImapFolderSyncStatus).join(Folder)\
             .filter(

@@ -776,8 +776,6 @@ class GmailCrispinClient(CondStoreCrispinClient):
                             .append(name)
             if 'labels' in self._folder_names:
                 self._folder_names['labels'].sort()
-                # synonyms on Gmail
-                self._folder_names['extra'] = self._folder_names['labels']
         return self._folder_names
 
     def uids(self, uids):

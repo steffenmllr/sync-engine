@@ -11,8 +11,10 @@ log = get_logger()
 DEFAULT_MESSAGE_TTL = 120
 
 
+# FIXFIXFIX[k]: Adapt to new Folder/Label abstraction
 class DeleteHandler(gevent.Greenlet):
-    """We don't outright delete message objects when all their associated
+    """
+    We don't outright delete message objects when all their associated
     uids are deleted. Instead, we mark them by setting a deleted_at
     timestamp. This is so that we can identify when a message is moved between
     folders, or when a draft is updated.
@@ -29,8 +31,9 @@ class DeleteHandler(gevent.Greenlet):
         Function that takes a message and returns a list of associated uid
         objects. For IMAP sync, this would just be
         `uid_accessor=lambda m: m.imapuids`
-    nessage_ttl: int
+    message_ttl: int
         Number of seconds to wait after a message is marked for deletion before
+
         deleting it for good.
     """
     def __init__(self, account_id, namespace_id, uid_accessor,
