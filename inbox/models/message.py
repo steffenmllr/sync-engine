@@ -10,19 +10,17 @@ from sqlalchemy import (Column, Integer, BigInteger, String, DateTime,
 from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import relationship, backref, validates
 from sqlalchemy.sql.expression import false
+from sqlalchemy.ext.associationproxy import association_proxy
 
 from inbox.util.html import plaintext2html, strip_tags
 from inbox.sqlalchemy_ext.util import JSON, json_field_too_long
-
 from inbox.util.addr import parse_mimepart_address_header
 from inbox.util.misc import parse_references, get_internaldate
-
 from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.base import MailSyncBase
 from inbox.models.namespace import Namespace
+from inbox.models.category import Category
 from inbox.security.blobstorage import encode_blob, decode_blob
-
-
 from inbox.log import get_logger
 log = get_logger()
 
@@ -40,6 +38,13 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def API_OBJECT_NAME(self):
         return 'message' if not self.is_draft else 'draft'
 
+    namespace_id = Column(ForeignKey(Namespace.id, ondelete='CASCADE'),
+                          index=True, nullable=False)
+    namespace = relationship(
+        'Namespace',
+        lazy='joined',
+        load_on_pending=True)
+
     # Do delete messages if their associated thread is deleted.
     thread_id = Column(Integer, ForeignKey('thread.id', ondelete='CASCADE'),
                        nullable=False)
@@ -48,13 +53,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         'Thread',
         backref=backref('messages', order_by='Message.received_date',
                         passive_deletes=True, cascade='all, delete-orphan'))
-
-    namespace_id = Column(ForeignKey(Namespace.id, ondelete='CASCADE'),
-                          index=True, nullable=False)
-    namespace = relationship(
-        'Namespace',
-        lazy='joined',
-        load_on_pending=True)
 
     from_addr = Column(JSON, nullable=False, default=lambda: [])
     sender_addr = Column(JSON, nullable=True)
@@ -113,10 +111,13 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     inbox_uid = Column(String(64), nullable=True, index=True)
 
     def regenerate_inbox_uid(self):
-        """The value of inbox_uid is simply the draft public_id and version,
+        """
+        The value of inbox_uid is simply the draft public_id and version,
         concatenated. Because the inbox_uid identifies the draft on the remote
         provider, we regenerate it on each draft revision so that we can delete
-        the old draft and add the new one on the remote."""
+        the old draft and add the new one on the remote.
+
+        """
         self.inbox_uid = '{}-{}'.format(self.public_id, self.version)
 
     # In accordance with JWZ (http://www.jwz.org/doc/threading.html)
@@ -125,9 +126,24 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     # Only used for drafts.
     version = Column(Integer, nullable=False, server_default='0')
 
+    categories = association_proxy(
+        'messagecategories', 'category',
+        creator=lambda category: MessageCategory(category=category))
+
+    # FOR INBOX-CREATED MESSAGES:
+    is_created = Column(Boolean, server_default=false(), nullable=False)
+    # Whether this draft is a reply to an existing thread.
+    is_reply = Column(Boolean)
+    reply_to_message_id = Column(Integer, ForeignKey('message.id'),
+                                 nullable=True)
+    reply_to_message = relationship('Message', uselist=False)
+
     def mark_for_deletion(self):
-        """Mark this message to be deleted by an asynchronous delete
-        handler."""
+        """
+        Mark this message to be deleted by an asynchronous delete
+        handler.
+
+        """
         self.deleted_at = datetime.datetime.utcnow()
 
     @validates('subject')
@@ -276,8 +292,11 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         self.size = len(body_string)  # includes headers text
 
     def _parse_mimepart(self, mimepart, mid, index, namespace_id):
-        """Parse a single MIME part into a Block and Part object linked to this
-        message."""
+        """
+        Parse a single MIME part into a Block and Part object linked to this
+        message.
+
+        """
         from inbox.models.block import Block, Part
         disposition, disposition_params = mimepart.content_disposition
         if (disposition is not None and
@@ -325,7 +344,8 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         new_part.message = self
 
     def _mark_error(self):
-        """ Mark message as having encountered errors while parsing.
+        """
+        Mark message as having encountered errors while parsing.
 
         Message parsing can fail for several reasons. Occasionally iconv will
         fail via maximum recursion depth. EAS messages may be missing Date and
@@ -454,17 +474,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
             resp.append(k)
         return resp
 
-    # FOR INBOX-CREATED MESSAGES:
-
-    is_created = Column(Boolean, server_default=false(), nullable=False)
-
-    # Whether this draft is a reply to an existing thread.
-    is_reply = Column(Boolean)
-
-    reply_to_message_id = Column(Integer, ForeignKey('message.id'),
-                                 nullable=True)
-    reply_to_message = relationship('Message', uselist=False)
-
     @property
     def versioned_relationships(self):
         return ['parts']
@@ -482,15 +491,43 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def account(self):
         return self.namespace.account
 
-    @property
-    def categories(self):
+    def update_metadata(self, session, is_draft):
+        if self.account.discriminator == 'easaccount':
+            uids = self.easuids
+        else:
+            uids = self.imapuids
+
+        if not uids:
+            self.is_read = True
+            self.is_starred = False
+        else:
+            self.is_read = any(i.is_seen for i in uids)
+            self.is_starred = any(i.is_flagged for i in uids)
+
         categories = set()
-        if self.account.discriminator == 'imapaccount':
-            for imapuid in self.imapuids:
-                categories.add(imapuid.folder)
-                categories.update(imapuid.labels)
-        # TODO[k]: Adapt to EAS
-        return categories
+        for i in uids:
+            categories.update(i.categories)
+
+        self.categories = categories
+
+    def add_category(self, category, execute_action=False):
+        if category not in self.categories:
+            self.categories.add(category)
+
+        if execute_action:
+            # TODO[k]: Syncback action goes here
+            # Would perform folder/ label syncback based on provider
+            pass
+
+    def remove_category(self, category, execute_action=False):
+        if category not in self.categories:
+            return
+        self.categories.remove(category)
+
+        if execute_action:
+            # TODO[k]: Syncback action goes here
+            # Would perform folder/ label syncback based on provider
+            pass
 
 # Need to explicitly specify the index length for table generation with MySQL
 # 5.6 when columns are too long to be fully indexed with utf8mb4 collation.
@@ -505,3 +542,29 @@ Index('ix_message_namespace_id_deleted_at', Message.namespace_id,
 # For statistics about messages sent via Nylas
 Index('ix_message_namespace_id_is_created', Message.namespace_id,
       Message.is_created)
+
+
+class MessageCategory(MailSyncBase):
+    """ Mapping between messages and categories. """
+    message_id = Column(Integer, ForeignKey(Message.id, ondelete='CASCADE'),
+                        nullable=False)
+    message = relationship(
+        'Message',
+        backref=backref('messagecategories',
+                        collection_class=set,
+                        cascade='all, delete-orphan'))
+
+    category_id = Column(Integer, ForeignKey(Category.id, ondelete='CASCADE'),
+                         nullable=False)
+    category = relationship(
+        Category,
+        backref=backref('messagecategories',
+                        cascade='all, delete-orphan',
+                        lazy='dynamic'))
+
+    @property
+    def namespace(self):
+        return self.message.namespace
+
+Index('message_category_ids',
+      MessageCategory.message_id, MessageCategory.category_id)

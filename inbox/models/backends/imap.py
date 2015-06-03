@@ -102,6 +102,7 @@ class ImapUid(MailSyncBase):
     # things like: ['$Forwarded', 'nonjunk', 'Junk']
     extra_flags = Column(LittleJSON, default=[], nullable=False)
     # labels (Gmail-specific)
+    # TO BE DEPRECATED
     g_labels = Column(JSON, default=lambda: [], nullable=True)
 
     def update_flags_and_labels(self, new_flags, x_gm_labels=None):
@@ -155,35 +156,24 @@ class ImapUid(MailSyncBase):
             add = set(new_labels) - set(local_labels)
             for name in add:
                 label = Label.find_or_create(session, self.account, name)
-                self.apply_label(label)
+                self.labels.add(label)
 
             remove = set(local_labels) - set(new_labels)
             if remove:
                 for label in session.query(Label).filter(
                         Label.account_id == self.account.id,
                         Label.name.in_(remove)).all():
-                    self.remove_label(label)
-
-    def apply_label(self, label, execute_action=False):
-        if label not in self.labels:
-            self.labels.add(label)
-
-        if execute_action:
-            # TODO[k]: Syncback action goes here
-            pass
-
-    def remove_label(self, label, execute_action=False):
-        if label not in self.labels:
-            return
-        self.labels.remove(label)
-
-        if execute_action:
-            # TODO[k]: Syncback action goes here
-            pass
+                    self.labels.remove(label)
 
     @property
     def namespace(self):
         return self.imapaccount.namespace
+
+    @property
+    def categories(self):
+        categories = set([self.folder])
+        categories.update(self.labels)
+        return categories
 
     __table_args__ = (UniqueConstraint('folder_id', 'msg_uid', 'account_id',),)
 

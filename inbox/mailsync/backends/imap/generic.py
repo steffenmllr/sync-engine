@@ -361,6 +361,8 @@ class FolderSyncEngine(Greenlet):
                     data_sha256 = sha256(raw_message.body).hexdigest()
                     if data_sha256 in data_sha256_message:
                         message = data_sha256_message[data_sha256]
+
+                        # Create a new imapuid
                         uid = ImapUid(msg_uid=raw_message.uid,
                                       message_id=message.id,
                                       account_id=self.account_id,
@@ -368,6 +370,10 @@ class FolderSyncEngine(Greenlet):
                         uid.update_flags_and_labels(raw_message.flags,
                                                     raw_message.g_labels)
                         db_session.add(uid)
+
+                        # Update the existing message + thread's metadata too
+                        common.update_message_thread_metadata(db_session, uid)
+
                         del data_sha256_message[data_sha256]
                     else:
                         self.download_and_commit_uids(crispin_client,
@@ -462,7 +468,6 @@ class FolderSyncEngine(Greenlet):
             if construct_new_thread:
                 new_uid.message.thread = ImapThread.from_imap_message(
                     db_session, new_uid.account.namespace, new_uid.message)
-                common.update_thread_attributes(db_session, new_uid)
             else:
                 parent_thread.messages.append(new_uid.message)
 

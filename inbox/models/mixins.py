@@ -2,7 +2,6 @@ import abc
 from datetime import datetime
 from sqlalchemy import Column, DateTime, String, inspect, Boolean, sql
 from sqlalchemy.ext.hybrid import hybrid_property, Comparator
-from sqlalchemy.sql.expression import false
 
 from inbox.sqlalchemy_ext.util import Base36UID, generate_public_id, ABCMixin
 from inbox.models.constants import MAX_INDEXABLE_LENGTH
@@ -124,62 +123,3 @@ class HasRunState(ABCMixin):
     # Database-level tracking of whether the sync should be running.
     sync_should_run = Column(Boolean, default=True, nullable=False,
                              server_default=sql.expression.true())
-
-
-class Category(object):
-    # TODO[k]: Can both Folder, Label have the same API_OBJECT_NAME?
-
-    public_id = Column(String(MAX_INDEXABLE_LENGTH), nullable=False,
-                       default=generate_public_id)
-
-    # Set the name column to be case sensitive, which isn't the default for
-    # MySQL. This is a requirement since IMAP allows users to create both a
-    # 'Test' and a 'test' (or a 'tEST' for what we care) folders.
-    # NOTE: this doesn't hold for EAS, which is case insensitive for non-Inbox
-    # folders as per
-    # https://msdn.microsoft.com/en-us/library/ee624913(v=exchg.80).aspx
-    name = Column(String(MAX_INDEXABLE_LENGTH, collation='utf8mb4_bin'),
-                  nullable=False)
-    canonical_name = Column(String(MAX_INDEXABLE_LENGTH), nullable=True)
-
-    user_created = Column(Boolean, server_default=false(), nullable=False)
-
-    CANONICAL_NAMES = ['inbox', 'archive', 'drafts', 'sent', 'spam',
-                       'starred', 'trash', 'important', 'all']
-    RESERVED_NAMES = ['all', 'sending', 'replied', 'file', 'attachment']
-
-    @property
-    def user_removable(self):
-        return self.user_created
-
-    @property
-    def user_addable(self):
-        return self.user_created
-
-    @property
-    def readonly(self):
-        return not self.user_created
-
-    @property
-    def lowercase_name(self):
-        return self.name.lower()
-
-    @property
-    def namespace(self):
-        return self.account.namespace
-
-    @classmethod
-    def name_available(cls, name, account_id, db_session):
-        name = name.lower()
-        if name in cls.CANONICAL_NAMES or name in cls.RESERVED_NAMES:
-            return False
-
-        if (name,) in db_session.query(cls.name).filter(
-                cls.account_id == account_id).all():
-            return False
-
-        return True
-
-    @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None):
-        raise NotImplementedError

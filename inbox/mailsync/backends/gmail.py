@@ -239,7 +239,6 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
             # We rely on Gmail's threading instead of our threading algorithm.
             new_uid.message.thread = ImapThread.from_gmail_message(
                 db_session, new_uid.account.namespace, new_uid.message)
-            common.update_thread_attributes(db_session, new_uid)
 
         return new_uid
 
@@ -405,15 +404,14 @@ def add_new_imapuids(crispin_client, remote_g_metadata, syncmanager_lock,
                             crispin_client.selected_folder_name),
                         msg_uid=uid, message=message_for[uid]) for uid in uids
                         if uid in message_for]
-                    for item in new_imapuids:
-                        # skip uids which have disappeared in the meantime
-                        if item.msg_uid in flags:
-                            item.update_flags_and_labels(
-                                flags[item.msg_uid].flags,
-                                flags[item.msg_uid].labels)
+                    for uid in new_imapuids:
+                        # Skip uids which have disappeared in the meantime
+                        if uid.msg_uid in flags:
+                            uid.update_flags_and_labels(
+                                flags[uid.msg_uid].flags,
+                                flags[uid.msg_uid].labels)
 
-                            common.update_message_attributes(session, item)
-                            common.update_thread_attributes(session, item)
+                            common.update_message_thread_metadata(session, uid)
 
                 db_session.add_all(new_imapuids)
                 db_session.commit()

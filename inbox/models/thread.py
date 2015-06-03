@@ -109,15 +109,30 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
         return [m for m in self.messages if m.is_draft]
 
     @property
+    def attachments(self):
+        return any(m.attachments for m in self.messages)
+
+    def update_metadata(self, session):
+        if any(m.is_read for m in self.messages):
+            self.unread = False
+
+        if any(m.is_starred for m in self.messages):
+            self.starred = True
+
+    @property
     def categories(self):
         categories = set()
         for m in self.messages:
             categories.update(m.categories)
         return categories
 
-    @property
-    def attachments(self):
-        return any(m.attachments for m in self.messages)
+    def add_category(self, category, execute_action=False):
+        # TODO[k]
+        pass
+
+    def remove_category(self, category, execute_action=False):
+        # TODO[k]
+        pass
 
     discriminator = Column('type', String(16))
     __mapper_args__ = {'polymorphic_on': discriminator}

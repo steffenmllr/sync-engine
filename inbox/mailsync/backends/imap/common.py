@@ -29,23 +29,11 @@ def all_uids(account_id, session, folder_id):
         ImapUid.folder_id == folder_id)}
 
 
-def update_message_attributes(db_session, imapuid):
-    message = imapuid.message
-
-    message.is_draft = imapuid.is_draft
-    message.is_read = imapuid.is_seen
-    message.is_starred = imapuid.is_flagged
-
-
-def update_thread_attributes(db_session, imapuid):
-    # TODO[k]: A more efficient way for this
-    thread = imapuid.message.thread
-
-    if any(m.is_read for m in thread.messages):
-        thread.unread = False
-
-    if any(m.is_starred for m in thread.messages):
-        thread.starred = True
+def update_message_thread_metadata(session, imapuid):
+    # Update the message's metadata
+    imapuid.message.update_metadata(session, imapuid.is_draft)
+    # Update the thread's metadata
+    imapuid.message.thread.update_metadata(session)
 
 
 def update_metadata(account_id, session, folder_name, folder_id, uids,
@@ -68,13 +56,13 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
             options(joinedload(ImapUid.message)):
         flags = new_flags[item.msg_uid].flags
         labels = getattr(new_flags[item.msg_uid], 'labels', None)
+
         changed = item.update_flags_and_labels(flags, labels)
 
         if not changed:
             continue
 
-        update_message_attributes(session, item)
-        update_thread_attributes(session, item)
+        update_message_thread_metadata(session, item)
 
 
 def remove_deleted_uids(account_id, session, uids, folder_id):
@@ -154,22 +142,24 @@ def create_imap_message(db_session, log, account, folder, msg):
         relationships. All new objects are uncommitted.
 
     """
-    new_msg = Message.create_from_synced(account=account, mid=msg.uid,
-                                         folder_name=folder.name,
-                                         received_date=msg.internaldate,
-                                         body_string=msg.body)
+    new_message = Message.create_from_synced(account=account, mid=msg.uid,
+                                             folder_name=folder.name,
+                                             received_date=msg.internaldate,
+                                             body_string=msg.body)
 
     # Check to see if this is a copy of a message that was first created
     # by the Inbox API. If so, don't create a new object; just use the old one.
-    existing_copy = reconcile_message(new_msg, db_session)
+    existing_copy = reconcile_message(new_message, db_session)
     if existing_copy is not None:
-        new_msg = existing_copy
+        new_message = existing_copy
 
     imapuid = ImapUid(account=account, folder=folder, msg_uid=msg.uid,
-                      message=new_msg)
+                      message=new_message)
     imapuid.update_flags_and_labels(msg.flags, msg.g_labels)
 
-    update_message_attributes(db_session, imapuid)
-    update_contacts_from_message(db_session, new_msg, account.namespace)
+    # Update the message's metadata
+    new_message.update_metadata(db_session, imapuid.is_draft)
+
+    update_contacts_from_message(db_session, new_message, account.namespace)
 
     return imapuid
