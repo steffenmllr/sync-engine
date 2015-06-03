@@ -83,7 +83,7 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
                                Folder.account_id == self.account_id).one()
                     sync_folder_names_ids.append((folder_name, id_))
                 except NoResultFound:
-                    log.error("Missing Folder object when starting sync",
+                    log.error('Missing Folder object when starting sync',
                               folder_name=folder_name)
                     raise MailsyncError("Missing Folder '{}' on account {}"
                                         .format(folder_name, self.account_id))

@@ -145,7 +145,7 @@ class Category(object):
     user_created = Column(Boolean, server_default=false(), nullable=False)
 
     CANONICAL_NAMES = ['inbox', 'archive', 'drafts', 'sent', 'spam',
-                       'starred', 'trash', 'important']
+                       'starred', 'trash', 'important', 'all']
     RESERVED_NAMES = ['all', 'sending', 'replied', 'file', 'attachment']
 
     @property
