@@ -5,7 +5,7 @@ from json import JSONEncoder, dumps
 from flask import Response
 
 from inbox.models import (Message, Contact, Calendar, Event, When,
-                          Thread, Namespace, Block, Tag)
+                          Thread, Namespace, Block, Category)
 from inbox.models.event import RecurringEvent, RecurringEventOverride
 
 
@@ -15,10 +15,11 @@ def format_address_list(addresses):
     return [{'name': name, 'email': email} for name, email in addresses]
 
 
-def format_tags_list(tags):
-    if tags is None:
+def format_categories(categories):
+    if categories is None:
         return []
-    return [{'name': tag.name, 'id': tag.public_id} for tag in tags]
+    return [{'name': category.name, 'id': category.public_id} for
+            category in categories]
 
 
 def encode(obj, namespace_public_id=None, expand=False):
@@ -99,6 +100,8 @@ def encode(obj, namespace_public_id=None, expand=False):
             'snippet': obj.snippet,
             'body': obj.body,
             'unread': not obj.is_read,
+            'starred': obj.is_starred,
+            'categories': format_categories(obj.categories),
             'files': obj.api_attachment_metadata,
             'events': [event.public_id for event in obj.events],
         }
@@ -123,7 +126,9 @@ def encode(obj, namespace_public_id=None, expand=False):
             'last_message_timestamp': obj.recentdate,
             'first_message_timestamp': obj.subjectdate,
             'snippet': obj.snippet,
-            'tags': format_tags_list(obj.tags),
+            'read': obj.read,
+            'starred': obj.starred,
+            'categories': format_categories(obj.categories),
             'version': obj.version
         }
 
@@ -151,6 +156,8 @@ def encode(obj, namespace_public_id=None, expand=False):
                 'thread_id': obj.public_id,
                 'snippet': msg.snippet,
                 'unread': not msg.is_read,
+                'starred': msg.is_starred,
+                'categories': format_categories(msg.categories),
                 'files': msg.api_attachment_metadata
             }
 
@@ -242,18 +249,13 @@ def encode(obj, namespace_public_id=None, expand=False):
 
         return resp
 
-    elif isinstance(obj, Tag):
+    elif isinstance(obj, Category):
         resp = {
             'id': obj.public_id,
-            'object': 'tag',
+            'object': 'category',
             'name': obj.name,
-            'namespace_id': _get_namespace_public_id(obj),
-            'readonly': obj.readonly
+            'namespace_id': _get_namespace_public_id(obj)
         }
-        if obj.unread_count is not None:
-            resp['unread_count'] = obj.unread_count
-        if obj.thread_count is not None:
-            resp['thread_count'] = obj.thread_count
         return resp
 
 

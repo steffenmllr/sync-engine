@@ -45,10 +45,6 @@ class Category(MailSyncBase, HasRevisions):
         return self.user_created
 
     @property
-    def readonly(self):
-        return not self.user_created
-
-    @property
     def lowercase_name(self):
         return self.name.lower()
 
@@ -67,7 +63,10 @@ class Category(MailSyncBase, HasRevisions):
     @classmethod
     def find_or_create(cls, session, namespace_id, name, canonical_name=None,
                        user_created=False):
-        # TODO[k]: Check if we should do this to provide desired/ discussed
+        # TODO[k]:
+        # 1. Should we store a Category.type = Folder/Label and expose as such
+        # in API?
+        # 2. Check if we should do this to provide desired/ discussed
         # API semantics -
         category_name = canonical_name if canonical_name else name
 
