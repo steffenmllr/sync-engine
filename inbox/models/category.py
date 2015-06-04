@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql.expression import false
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 from inbox.models.base import MailSyncBase
 from inbox.models.mixins import HasRevisions
@@ -15,34 +16,22 @@ log = get_logger()
 class Category(MailSyncBase, HasRevisions):
     API_OBJECT_NAME = 'category'
 
-    # `use_alter` required here to avoid circular dependency w/Account
-    account_id = Column(Integer,
-                        ForeignKey('account.id', use_alter=True,
-                                   name='category_fk1',
-                                   ondelete='CASCADE'), nullable=False)
-
-    # TOFIX this causes an import error due to circular dependencies
-    # from inbox.models.account import Account
-    account = relationship(
-        'Account',
+    # Need `use_alter`!
+    namespace_id = Column(Integer,
+                          ForeignKey('namespace.id', use_alter=True,
+                                     name='category_fk1',
+                                     ondelete='CASCADE'), nullable=False)
+    namespace = relationship(
+        'Namespace',
         backref=backref(
             'categories',
             collection_class=attribute_mapped_collection('public_id'),
-            # Don't load folders if the account is deleted,
-            # (the folders will be deleted by the foreign key delete casade).
             passive_deletes=True),
-        foreign_keys=[account_id],
         load_on_pending=True)
 
     public_id = Column(String(MAX_INDEXABLE_LENGTH), nullable=False,
                        default=generate_public_id)
 
-    # Set the name column to be case sensitive, which isn't the default for
-    # MySQL. This is a requirement since IMAP allows users to create both a
-    # 'Test' and a 'test' (or a 'tEST' for what we care) folders.
-    # NOTE: this doesn't hold for EAS, which is case insensitive for non-Inbox
-    # folders as per
-    # https://msdn.microsoft.com/en-us/library/ee624913(v=exchg.80).aspx
     name = Column(String(MAX_INDEXABLE_LENGTH, collation='utf8mb4_bin'),
                   nullable=False)
     canonical_name = Column(String(MAX_INDEXABLE_LENGTH), nullable=True)
@@ -69,10 +58,6 @@ class Category(MailSyncBase, HasRevisions):
     def lowercase_name(self):
         return self.name.lower()
 
-    @property
-    def namespace(self):
-        return self.account.namespace
-
     @classmethod
     def name_available(cls, name, account_id, db_session):
         name = name.lower()
@@ -86,13 +71,25 @@ class Category(MailSyncBase, HasRevisions):
         return True
 
     @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None):
-        raise NotImplementedError
+    def find_or_create(cls, session, namespace_id, user_created, name,
+                       canonical_name=None):
+        # TODO[k]: Check if we should do this to provide desired/ discussed
+        # API semantics -
+        # don't have Category.canonical_name and set:
+        # category_name = canonical_name if canonical_name else name
 
-    discriminator = Column('type', String(16))
+        try:
+            obj = session.query(cls).filter(
+                cls.namespace_id == namespace_id, cls.name == name,
+                cls.canonical_name == canonical_name).one()
+        except NoResultFound:
+            obj = cls(namespace_id=namespace_id, user_created=user_created,
+                      name=name, canonical_name=canonical_name)
+            session.add(obj)
+        except MultipleResultsFound:
+            log.error('Duplicate category rows for namespace_id {}, name {}'
+                      .format(namespace_id, name))
+            raise
 
-    __mapper_args__ = {'polymorphic_on': discriminator,
-                       'polymorphic_identity': 'category'}
-
-    __table_args__ = (UniqueConstraint('account_id', 'name'),
-                      UniqueConstraint('account_id', 'public_id'))
+    __table_args__ = (UniqueConstraint('namespace_id', 'name'),
+                      UniqueConstraint('namespace_id', 'public_id'))

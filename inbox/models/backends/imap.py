@@ -27,8 +27,6 @@ class ImapAccount(Account):
     id = Column(Integer, ForeignKey(Account.id, ondelete='CASCADE'),
                 primary_key=True)
 
-    __mapper_args__ = {'polymorphic_identity': 'imapaccount'}
-
     _imap_server_host = Column(String(255), nullable=True)
     _imap_server_port = Column(Integer, nullable=False, server_default='993')
 
@@ -60,6 +58,8 @@ class ImapAccount(Account):
         host, port = endpoint
         self._smtp_server_host = host
         self._smtp_server_port = int(port)
+
+    __mapper_args__ = {'polymorphic_identity': 'imapaccount'}
 
 
 class ImapUid(MailSyncBase):
@@ -171,8 +171,8 @@ class ImapUid(MailSyncBase):
 
     @property
     def categories(self):
-        categories = set([self.folder])
-        categories.update(self.labels)
+        categories = set([l.category for l in self.labels])
+        categories.add(self.folder.category)
         return categories
 
     __table_args__ = (UniqueConstraint('folder_id', 'msg_uid', 'account_id',),)
@@ -182,7 +182,8 @@ Index('account_id_folder_id', ImapUid.account_id, ImapUid.folder_id)
 
 
 class ImapFolderInfo(MailSyncBase):
-    """ Per-folder UIDVALIDITY and (if applicable) HIGHESTMODSEQ.
+    """
+    Per-folder UIDVALIDITY and (if applicable) HIGHESTMODSEQ.
 
     If the UIDVALIDITY value changes, it indicates that all UIDs for messages
     in the folder need to be thrown away and resynced.
@@ -192,6 +193,7 @@ class ImapFolderInfo(MailSyncBase):
     See http://tools.ietf.org/html/rfc3501#section-2.3.1.1 for more info
     on UIDVALIDITY, and http://tools.ietf.org/html/rfc4551 for more info on
     HIGHESTMODSEQ.
+
     """
     account_id = Column(ForeignKey(ImapAccount.id, ondelete='CASCADE'),
                         nullable=False)
@@ -225,7 +227,9 @@ def _choose_existing_thread_for_gmail(message, db_session):
     Inbox threads, try to choose which thread to put the new message in based
     on the In-Reply-To header. If that doesn't succeed because the In-Reply-To
     header is missing or doesn't match existing synced messages, return the
-    most recent thread."""
+    most recent thread.
+
+    """
     # TODO(emfree): also use the References header, or better yet, change API
     # semantics so that we don't have to do this at all.
     prior_threads = db_session.query(ImapThread).filter_by(

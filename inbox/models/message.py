@@ -510,6 +510,8 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 
         self.categories = categories
 
+        # TODO[k]: Update from pending actions here
+
     def add_category(self, category, execute_action=False):
         if category not in self.categories:
             self.categories.add(category)
