@@ -28,26 +28,26 @@ class Label(MailSyncBase):
             passive_deletes=True),
         load_on_pending=True)
 
-    name = Column(String(MAX_LABEL_NAME_LENGTH), nullable=False)
+    name = Column(String(MAX_LABEL_NAME_LENGTH, collation='utf8mb4_bin'),
+                  nullable=False)
+    canonical_name = Column(String(MAX_LABEL_NAME_LENGTH), nullable=True)
 
     # TODO[k]: What if Category deleted via API?
+    # Should we allow a delete-cascade here?
     category_id = Column(Integer, ForeignKey(Category.id))
     category = relationship(
         Category,
-        backref=backref('label',
-                        uselist=False,
+        backref=backref('labels',
                         cascade='all, delete-orphan'))
 
     @classmethod
     def find_or_create(cls, session, account, name, canonical_name=None):
-        # g_label may not have unicode type (in particular for a numeric label,
-        # e.g., '42'), so coerce to unicode.
-        name = unicode(name)
+        q = session.query(cls).filter(cls.account_id == account.id)
 
-        if name.lstrip('\\').lower() in cls.CANONICAL_NAMES:
-            # For Inbox-canonical names, save the canonicalized form.
-            name = name.lstrip('\\').lower()
-        else:
+        if name is not None:
+            # g_label may not have unicode type (in particular for a numeric
+            # label, e.g. '42'), so coerce to unicode.
+            name = unicode(name)
             # Remove trailing whitespace, truncate (due to MySQL limitations).
             name = name.rstrip()
             if len(name) > MAX_LABEL_NAME_LENGTH:
@@ -55,15 +55,22 @@ class Label(MailSyncBase):
                             "original name was '{}'" .format(account.id, name))
                 name = name[:MAX_LABEL_NAME_LENGTH]
 
+            q = q.filter_by(name=name)
+
+        if canonical_name is not None:
+            q = q.filter(cls.canonical_name == canonical_name)
+
         try:
             obj = session.query(cls).filter(
-                cls.account_id == account.id,
-                cls.name == name).one()
+                cls.account_id == account.id, cls.name == name,
+                cls.canonical_name == canonical_name).one()
         except NoResultFound:
-            obj = cls(account_id=account.id, name=name)
-            obj.category = Category.find_or_create(
-                namespace_id=account.namespace.id, name=name)
-
+            obj = cls(account_id=account.id, name=name,
+                      canonical_name=canonical_name)
+            with session.no_autoflush:
+                obj.category = Category.find_or_create(
+                    session, namespace_id=account.namespace.id, name=name,
+                    canonical_name=canonical_name)
             session.add(obj)
         except MultipleResultsFound:
             log.error('Duplicate label rows for name {}, account_id {}'

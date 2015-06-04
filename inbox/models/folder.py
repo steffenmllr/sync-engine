@@ -44,16 +44,17 @@ class Folder(MailSyncBase):
     identifier = Column(String(MAX_FOLDER_NAME_LENGTH), nullable=True)
 
     # TODO[k]: What if Category deleted via API?
+    # Should we allow a delete-cascade here?
     category_id = Column(Integer, ForeignKey(Category.id))
     category = relationship(
         Category,
-        backref=backref('folder',
-                        uselist=False,
+        backref=backref('folders',
                         cascade='all, delete-orphan'))
 
     @classmethod
     def find_or_create(cls, session, account, name, canonical_name=None):
-        q = session.query(cls).filter_by(account_id=account.id)
+        q = session.query(cls).filter(cls.account_id == account.id)
+
         if name is not None:
             # Remove trailing whitespace, truncate to max folder name length.
             # Not ideal but necessary to work around MySQL limitations.
@@ -63,20 +64,20 @@ class Folder(MailSyncBase):
                             "original name was '{}'" .format(account.id, name))
                 name = name[:MAX_FOLDER_NAME_LENGTH]
             q = q.filter_by(name=name)
+
         if canonical_name is not None:
-            q = q.filter_by(canonical_name=canonical_name)
+            q = q.filter(cls.canonical_name == canonical_name)
 
         try:
             obj = q.one()
         except NoResultFound:
             obj = cls(account=account, name=name,
                       canonical_name=canonical_name)
-            obj.category = Category.find_or_create(
-                namespace_id=account.namespace.id, name=name,
-                canonical_name=canonical_name)
-
+            with session.no_autoflush:
+                obj.category = Category.find_or_create(
+                    session, namespace_id=account.namespace.id, name=name,
+                    canonical_name=canonical_name)
             session.add(obj)
-
         except MultipleResultsFound:
             log.info('Duplicate folder rows for folder {} for account {}'
                      .format(name, account.id))

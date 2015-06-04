@@ -7,7 +7,7 @@ from inbox.util.debug import bind_context
 from inbox.util.concurrency import retry_and_report_killed
 from inbox.util.itert import partition
 from inbox.models import Account, Folder, Label
-from inbox.models.category import Category
+from inbox.models.constants import CANONICAL_NAMES
 from inbox.models.session import session_scope
 from inbox.mailsync.exc import SyncException
 from inbox.heartbeat.status import clear_heartbeat_status
@@ -27,13 +27,25 @@ class MailsyncDone(GreenletExit):
 
 def save_folder_names(log, account_id, folder_names, db_session):
     """
-    Create Folder objects & map special folder names on Account objects.
+    Save the folders/labels present on the remote backend for an account.
 
-    Folders that belong to an account and no longer exist in `folder_names`
-    ARE DELETED, unless they are "dangling" (do not have a 'name' set).
+    * Create Folder, Label objects.
+    Map special folders, namely the Inbox canonical folders, on Account
+    objects too.
 
-    We don't canonicalize folder names to lowercase when saving
-    because different backends may be case-sensitive or otherwise. Code that
+    * DELETE Folders, Labels that no longer exist in `folder_names`.
+
+    Notes
+    -----
+    Generic IMAP uses folders (not labels). Inbox canonical and other folders
+    are created as Folder objects only accordingly.
+
+    Gmail uses IMAP folders and labels. Inbox canonical folders are therefore
+    mapped to both Folder and Label objects, everything else is created as a
+    Label only.
+
+    We don't canonicalize folder names to lowercase when saving because
+    different backends may be case-sensitive or otherwise - code that
     references saved folder names should canonicalize if needed when doing
     comparisons.
 
@@ -87,9 +99,15 @@ def save_folder_names(log, account_id, folder_names, db_session):
 
     # Create new Folders and Labels
     for canonical_name in folder_names:
-        if canonical_name in Category.CANONICAL_NAMES:
+        if canonical_name in CANONICAL_NAMES:
             folder = Folder.find_or_create(db_session, account, None,
                                            canonical_name)
+            if folder.name != folder_names[canonical_name]:
+                log.warn('Canonical folder name changed on remote',
+                         account_id=account_id,
+                         canonical_name=canonical_name,
+                         new_name=folder_names[canonical_name],
+                         name=folder.name)
             folder.name = folder_names[canonical_name]
 
             attr_name = '{}_folder'.format(canonical_name)
@@ -100,8 +118,9 @@ def save_folder_names(log, account_id, folder_names, db_session):
                 setattr(account, attr_name, folder)
 
             if account.discriminator == 'gmailaccount':
-                label = Label.find_or_create(db_session, account,
+                label = Label.find_or_create(db_session, account, None,
                                              canonical_name)
+                label.name = folder_names[canonical_name]
 
         elif canonical_name == 'extra':
             for name in folder_names['extra']:

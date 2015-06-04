@@ -158,7 +158,8 @@ def create_imap_message(db_session, log, account, folder, msg):
     imapuid.update_flags_and_labels(msg.flags, msg.g_labels)
 
     # Update the message's metadata
-    new_message.update_metadata(db_session, imapuid.is_draft)
+    with db_session.no_autoflush:
+        new_message.update_metadata(db_session, imapuid.is_draft)
 
     update_contacts_from_message(db_session, new_message, account.namespace)
 
