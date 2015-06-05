@@ -1,11 +1,12 @@
 from tests.util.base import gmail_account, generic_account
 
 from inbox.crispin import RawFolder
-from inbox.mailsync.backends.base import save_folder_names
 from inbox.models import Folder, Label, Category
 
 
 def test_gmail_folder_label_creation(empty_db):
+    from inbox.mailsync.backends.gmail import GmailSyncMonitor
+
     account = gmail_account(empty_db)
     assert account.discriminator == 'gmailaccount'
 
@@ -22,7 +23,8 @@ def test_gmail_folder_label_creation(empty_db):
         RawFolder(name='carousel', canonical_name=None, category=None),
         RawFolder(name='circusfades', canonical_name=None, category=None)]
 
-    save_folder_names(empty_db.session, account.id, raw_folders)
+    GmailSyncMonitor(account).save_folder_names(empty_db.session,
+                                                account.id, raw_folders)
 
     # For Gmail, /only/ Inbox-canonical folders are created as Folders.
     folders = empty_db.session.query(Folder).filter(
@@ -65,6 +67,8 @@ def test_gmail_folder_label_creation(empty_db):
 
 
 def test_imap_folder_label_creation(empty_db):
+    from inbox.mailsync.backends.imap import ImapSyncMonitor
+
     account = generic_account(empty_db)
     assert account.discriminator == 'genericaccount'
 
@@ -80,7 +84,8 @@ def test_imap_folder_label_creation(empty_db):
         RawFolder(name='carousel', canonical_name=None, category=None),
         RawFolder(name='circusfades', canonical_name=None, category=None)]
 
-    save_folder_names(empty_db.session, account.id, raw_folders)
+    ImapSyncMonitor(account).save_folder_names(empty_db.session,
+                                               account.id, raw_folders)
 
     # For generic Imap, all folders are created as Folders.
     folders = empty_db.session.query(Folder).filter(

@@ -4,10 +4,9 @@ from gevent.coros import BoundedSemaphore
 from sqlalchemy.orm.exc import NoResultFound
 from inbox.log import get_logger
 from inbox.crispin import retry_crispin, connection_pool
-from inbox.models import Folder
+from inbox.models import Account, Folder
 from inbox.mailsync.backends.base import BaseMailSyncMonitor
-from inbox.mailsync.backends.base import (save_folder_names,
-                                          MailsyncError,
+from inbox.mailsync.backends.base import (MailsyncError,
                                           mailsync_session_scope,
                                           thread_polling, thread_finished)
 from inbox.mailsync.backends.imap.generic import FolderSyncEngine
@@ -68,7 +67,8 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
             with connection_pool(self.account_id).get() as crispin_client:
                 # Get a fresh list of the folder names from the remote
                 remote_folders = crispin_client.folders()
-                save_folder_names(db_session, self.account_id, remote_folders)
+                self.save_folder_names(db_session, self.account_id,
+                                       remote_folders)
                 # The folders we should be syncing
                 sync_folders = crispin_client.sync_folders()
 
@@ -85,6 +85,93 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
                     raise MailsyncError("Missing Folder '{}' on account {}"
                                         .format(folder_name, self.account_id))
             return sync_folder_names_ids
+
+    def save_folder_names(self, db_session, account_id, raw_folders):
+        """
+        Save the folders/labels present on the remote backend for an account.
+
+        * Create Folder, Label objects.
+        Map special folders, namely the Inbox canonical folders, on Account
+        objects too.
+
+        * DELETE Folders, Labels that no longer exist in `folder_names`.
+
+        Notes
+        -----
+        Generic IMAP uses folders (not labels). Inbox canonical and other
+        folders are created as Folder objects only accordingly.
+
+        Gmail uses IMAP folders and labels. Inbox canonical folders are
+        therefore mapped to both Folder and Label objects, everything else is
+        created as a Label only.
+
+        We don't canonicalize folder names to lowercase when saving because
+        different backends may be case-sensitive or otherwise - code that
+        references saved folder names should canonicalize if needed when doing
+        comparisons.
+
+        """
+        account = db_session.query(Account).get(account_id)
+
+        remote_canonical_folders = [f.canonical_name for f in raw_folders
+                                    if f.canonical_name is not None]
+        remote_folders = [f.name for f in raw_folders if not f.canonical_name]
+
+        assert 'inbox' in remote_canonical_folders, \
+            'Account {} has no detected inbox folder'.\
+            format(account.email_address)
+
+        folders = db_session.query(Folder).filter(
+            Folder.account_id == account_id).all()
+        local_canonical_folders = {f.canonical_name: f for f in folders
+                                   if f.canonical_name}
+        local_folders = {f.name: f for f in folders if not f.canonical_name}
+
+        # Delete canonical folders no longer present on the remote.
+
+        discard = \
+            set(local_canonical_folders.iterkeys()) - \
+            set(remote_canonical_folders)
+        for name in discard:
+            folder = local_canonical_folders[name]
+            log.warn('Canonical folder deleted from remote',
+                     account_id=account_id, canonical_name=name,
+                     name=folder.name)
+            db_session.delete(folder)
+
+        # Delete other folders no longer present on the remote.
+
+        discard = set(local_folders.iterkeys()) - set(remote_folders)
+        for name in discard:
+            log.info('Folder deleted from remote', account_id=account_id,
+                     name=name)
+            db_session.delete(local_folders[name])
+
+        # Create new Folders
+
+        for raw_folder in raw_folders:
+            name, canonical_name, category = \
+                raw_folder.name, raw_folder.canonical_name, raw_folder.category
+
+            folder = Folder.find_or_create(db_session, account, name,
+                                           canonical_name, category)
+
+            if canonical_name:
+                if folder.name != name:
+                    log.warn('Canonical folder name changed on remote',
+                             account_id=account_id,
+                             canonical_name=canonical_name,
+                             new_name=name, name=folder.name)
+                folder.name = name
+
+                attr_name = '{}_folder'.format(canonical_name)
+                id_attr_name = '{}_folder_id'.format(canonical_name)
+                if getattr(account, id_attr_name) != folder.id:
+                    # NOTE: Updating the relationship (i.e., attr_name) also
+                    # updates the associated foreign key (i.e., id_attr_name)
+                    setattr(account, attr_name, folder)
+
+        db_session.commit()
 
     def start_new_folder_sync_engines(self, folders=set()):
         new_folders = [f for f in self.prepare_sync() if f not in folders]

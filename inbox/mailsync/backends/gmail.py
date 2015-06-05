@@ -29,7 +29,7 @@ from inbox.util.debug import bind_context
 
 from inbox.crispin import GmailSettingError
 from inbox.log import get_logger
-from inbox.models import Message, Folder, Namespace, Account
+from inbox.models import Message, Folder, Namespace, Account, Label
 from inbox.models.backends.gmail import GmailAccount
 from inbox.models.backends.imap import ImapFolderInfo, ImapUid, ImapThread
 from inbox.mailsync.backends.base import (create_db_objects,
@@ -40,6 +40,7 @@ from inbox.mailsync.backends.imap.generic import safe_download, UIDStack
 from inbox.mailsync.backends.imap.condstore import CondstoreFolderSyncEngine
 from inbox.mailsync.backends.imap.monitor import ImapSyncMonitor
 from inbox.mailsync.backends.imap import common
+log = get_logger()
 
 PROVIDER = 'gmail'
 SYNC_MONITOR_CLS = 'GmailSyncMonitor'
@@ -53,7 +54,78 @@ class GmailSyncMonitor(ImapSyncMonitor):
         ImapSyncMonitor.__init__(self, *args, **kwargs)
         self.sync_engine_class = GmailFolderSyncEngine
 
-log = get_logger()
+    def save_folder_names(self, db_session, account_id, raw_folders):
+        account = db_session.query(Account).get(account_id)
+
+        remote_canonical_folders = [f.canonical_name for f in raw_folders
+                                    if f.canonical_name is not None]
+        remote_labels = [f.name for f in raw_folders if not f.canonical_name]
+
+        assert 'inbox' in remote_canonical_folders, \
+            'Account {} has no detected inbox folder'.\
+            format(account.email_address)
+
+        local_canonical_folders = \
+            {f.canonical_name: f for f in db_session.query(Folder).filter(
+                Folder.account_id == account_id,
+                Folder.canonical_name.isnot(None)).all()}
+
+        local_labels = {l.name: l for l in db_session.query(Label).filter(
+                        Label.account_id == account_id).all()}
+
+        # Delete canonical folders no longer present on the remote.
+        # In the case of Gmail, delete the matching label too.
+
+        discard = \
+            set(local_canonical_folders.iterkeys()) - \
+            set(remote_canonical_folders)
+        for name in discard:
+            folder = local_canonical_folders[name]
+            label = local_labels.get(name, None)
+
+            log.warn('Canonical folder deleted from remote',
+                     account_id=account_id, canonical_name=name,
+                     name=folder.name, label=label)
+
+            db_session.delete(folder)
+            db_session.delete(label)
+
+        # Delete other labels no longer present on the remote.
+        # In the case of generic Imap, there are Folders;
+
+        discard = set(local_labels.iterkeys()) - set(remote_labels)
+        for name in discard:
+            log.info('Label deleted from remote',
+                     account_id=account_id, name=name)
+            db_session.delete(local_labels[name])
+
+        # Create new Folders and Labels
+        for raw_folder in raw_folders:
+            name, canonical_name, category = \
+                raw_folder.name, raw_folder.canonical_name, raw_folder.category
+
+            label = Label.find_or_create(db_session, account, name,
+                                         canonical_name, category)
+
+            if canonical_name:
+                folder = Folder.find_or_create(db_session, account, name,
+                                               canonical_name, category)
+                if folder.name != name:
+                    log.warn('Canonical folder name changed on remote',
+                             account_id=account_id,
+                             canonical_name=canonical_name,
+                             new_name=name, name=folder.name)
+                folder.name = name
+                label.name = name
+
+                attr_name = '{}_folder'.format(canonical_name)
+                id_attr_name = '{}_folder_id'.format(canonical_name)
+                if getattr(account, id_attr_name) != folder.id:
+                    # NOTE: Updating the relationship (i.e., attr_name) also
+                    # updates the associated foreign key (i.e., id_attr_name)
+                    setattr(account, attr_name, folder)
+
+        db_session.commit()
 
 
 class GmailFolderSyncEngine(CondstoreFolderSyncEngine):

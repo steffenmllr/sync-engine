@@ -250,7 +250,7 @@ def default_account(db):
 def generic_account(db):
     from inbox.auth.generic import GenericAuthHandler
 
-    handler = GenericAuthHandler(provider_name='generic')
+    handler = GenericAuthHandler(provider_name='yahoo')
     acc = handler.create_account(db.session, 'user@generic_email.com',
                                  {'email': 'user@genericemail.com',
                                   'password': 'hunter2'})

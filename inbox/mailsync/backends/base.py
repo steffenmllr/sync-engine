@@ -6,7 +6,7 @@ log = get_logger()
 from inbox.util.debug import bind_context
 from inbox.util.concurrency import retry_and_report_killed
 from inbox.util.itert import partition
-from inbox.models import Account, Folder, Label
+from inbox.models import Account, Folder
 from inbox.models.session import session_scope
 from inbox.mailsync.exc import SyncException
 from inbox.heartbeat.status import clear_heartbeat_status
@@ -22,120 +22,6 @@ class MailsyncError(Exception):
 
 class MailsyncDone(GreenletExit):
     pass
-
-
-def save_folder_names(db_session, account_id, raw_folders):
-    """
-    Save the folders/labels present on the remote backend for an account.
-
-    * Create Folder, Label objects.
-    Map special folders, namely the Inbox canonical folders, on Account
-    objects too.
-
-    * DELETE Folders, Labels that no longer exist in `folder_names`.
-
-    Notes
-    -----
-    Generic IMAP uses folders (not labels). Inbox canonical and other folders
-    are created as Folder objects only accordingly.
-
-    Gmail uses IMAP folders and labels. Inbox canonical folders are therefore
-    mapped to both Folder and Label objects, everything else is created as a
-    Label only.
-
-    We don't canonicalize folder names to lowercase when saving because
-    different backends may be case-sensitive or otherwise - code that
-    references saved folder names should canonicalize if needed when doing
-    comparisons.
-
-    """
-    account = db_session.query(Account).get(account_id)
-
-    remote_canonical_folders = [f.canonical_name for f in raw_folders
-                                if f.canonical_name is not None]
-    remote_folders_or_labels = [f.name for f in raw_folders
-                                if f.canonical_name is None]
-
-    assert 'inbox' in remote_canonical_folders, \
-        'Account {} has no detected inbox folder'.format(account.email_address)
-
-    folders = db_session.query(Folder).filter(
-        Folder.account_id == account_id).all()
-    local_canonical_folders = {f.canonical_name: f for f in folders
-                               if f.canonical_name}
-    local_folders = {f.name: f for f in folders if not f.canonical_name}
-    local_labels = {l.name: l for l in db_session.query(Label).filter(
-                    Label.account_id == account_id).all()}
-
-    # Delete canonical folders no longer present on the remote.
-    # In the case of Gmail, delete the matching label too.
-
-    discard = \
-        set(local_canonical_folders.iterkeys()) - set(remote_canonical_folders)
-    for name in discard:
-        folder = local_canonical_folders[name]
-        label = local_labels.get(name, None)
-
-        log.warn('Canonical folder deleted from remote', account_id=account_id,
-                 canonical_name=name, name=folder.name, label=label)
-
-        db_session.delete(folder)
-        if label:
-            db_session.delete(label)
-
-    # Delete other folders/ labels no longer present on the remote.
-    # In the case of generic Imap, there are Folders;
-    # for Gmail, these are Labels.
-
-    # Not applicable to Gmail
-    discard = set(local_folders.iterkeys()) - set(remote_folders_or_labels)
-    for name in discard:
-        log.info('Folder deleted from remote', account_id=account_id,
-                 name=name)
-        db_session.delete(local_folders[name])
-
-    # Only applicable to Gmail
-    discard = set(local_labels.iterkeys()) - set(remote_folders_or_labels)
-    for name in discard:
-        log.info('Label deleted from remote', account_id=account_id, name=name)
-        db_session.delete(local_labels[name])
-
-    # Create new Folders and Labels
-    for raw_folder in raw_folders:
-        name, canonical_name, category = \
-            raw_folder.name, raw_folder.canonical_name, raw_folder.category
-
-        if canonical_name is not None:
-            folder = Folder.find_or_create(db_session, account, name,
-                                           canonical_name, category)
-            if folder.name != name:
-                log.warn('Canonical folder name changed on remote',
-                         account_id=account_id,
-                         canonical_name=canonical_name,
-                         new_name=name, name=folder.name)
-            folder.name = name
-
-            attr_name = '{}_folder'.format(canonical_name)
-            id_attr_name = '{}_folder_id'.format(canonical_name)
-            if getattr(account, id_attr_name) != folder.id:
-                # NOTE: Updating the relationship (i.e., attr_name) also
-                # updates the associated foreign key (i.e., id_attr_name)
-                setattr(account, attr_name, folder)
-
-            if account.discriminator == 'gmailaccount':
-                label = Label.find_or_create(db_session, account, name,
-                                             canonical_name, category)
-                label.name = name
-
-        elif account.discriminator == 'gmailaccount':
-            Label.find_or_create(db_session, account, name, canonical_name,
-                                 category)
-
-        else:
-            Folder.find_or_create(db_session, account, name, canonical_name,
-                                  category)
-
-    db_session.commit()
 
 
 def gevent_check_join(log, threads, errmsg):
