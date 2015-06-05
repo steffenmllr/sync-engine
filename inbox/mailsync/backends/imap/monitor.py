@@ -123,21 +123,7 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
 
         folders = db_session.query(Folder).filter(
             Folder.account_id == account_id).all()
-        local_canonical_folders = {f.canonical_name: f for f in folders
-                                   if f.canonical_name}
         local_folders = {f.name: f for f in folders if not f.canonical_name}
-
-        # Delete canonical folders no longer present on the remote.
-
-        discard = \
-            set(local_canonical_folders.iterkeys()) - \
-            set(remote_canonical_folders)
-        for name in discard:
-            folder = local_canonical_folders[name]
-            log.warn('Canonical folder deleted from remote',
-                     account_id=account_id, canonical_name=name,
-                     name=folder.name)
-            db_session.delete(folder)
 
         # Delete other folders no longer present on the remote.
 
@@ -163,13 +149,6 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
                              canonical_name=canonical_name,
                              new_name=name, name=folder.name)
                 folder.name = name
-
-                attr_name = '{}_folder'.format(canonical_name)
-                id_attr_name = '{}_folder_id'.format(canonical_name)
-                if getattr(account, id_attr_name) != folder.id:
-                    # NOTE: Updating the relationship (i.e., attr_name) also
-                    # updates the associated foreign key (i.e., id_attr_name)
-                    setattr(account, attr_name, folder)
 
         db_session.commit()
 

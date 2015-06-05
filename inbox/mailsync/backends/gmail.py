@@ -32,11 +32,9 @@ from inbox.log import get_logger
 from inbox.models import Message, Folder, Namespace, Account, Label
 from inbox.models.backends.gmail import GmailAccount
 from inbox.models.backends.imap import ImapFolderInfo, ImapUid, ImapThread
-from inbox.mailsync.backends.base import (create_db_objects,
-                                          commit_uids,
-                                          mailsync_session_scope,
+from inbox.mailsync.backends.base import (mailsync_session_scope,
                                           THROTTLE_WAIT)
-from inbox.mailsync.backends.imap.generic import safe_download, UIDStack
+from inbox.mailsync.backends.imap.generic import UIDStack, safe_download
 from inbox.mailsync.backends.imap.condstore import CondstoreFolderSyncEngine
 from inbox.mailsync.backends.imap.monitor import ImapSyncMonitor
 from inbox.mailsync.backends.imap import common
@@ -117,13 +115,6 @@ class GmailSyncMonitor(ImapSyncMonitor):
                              new_name=name, name=folder.name)
                 folder.name = name
                 label.name = name
-
-                attr_name = '{}_folder'.format(canonical_name)
-                id_attr_name = '{}_folder_id'.format(canonical_name)
-                if getattr(account, id_attr_name) != folder.id:
-                    # NOTE: Updating the relationship (i.e., attr_name) also
-                    # updates the associated foreign key (i.e., id_attr_name)
-                    setattr(account, attr_name, folder)
 
         db_session.commit()
 
@@ -314,8 +305,11 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
 
         return new_uid
 
-    def download_and_commit_uids(self, crispin_client, folder_name, uids):
+    def download_and_commit_uids(self, crispin_client, uids):
         raw_messages = safe_download(crispin_client, uids)
+        if not raw_messages:
+            return 0
+        new_uids = set()
         with self.syncmanager_lock:
             # there is the possibility that another green thread has already
             # downloaded some message(s) from this batch... check within the
@@ -325,12 +319,20 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
                     db_session, raw_messages)
                 if not raw_messages:
                     return 0
-                new_imapuids = create_db_objects(
-                    self.account_id, db_session, log, folder_name,
-                    raw_messages, self.create_message)
-                commit_uids(db_session, new_imapuids, self.provider_name)
-        self.saved_uids.update(uids)
-        return len(new_imapuids)
+
+                account = db_session.query(Account).get(self.account_id)
+                folder = db_session.query(Folder).get(self.folder_id)
+                for msg in raw_messages:
+                    uid = self.create_message(db_session, account, folder,
+                                              msg)
+                    if uid is not None:
+                        db_session.add(uid)
+                        db_session.flush()
+                        new_uids.add(uid)
+                db_session.commit()
+
+        self.saved_uids.update(new_uids)
+        return len(new_uids)
 
     def __download_queued_threads(self, crispin_client, download_stack):
         """
@@ -399,7 +401,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
         log.debug(deduplicated_message_count=len(to_download))
         for uids in chunk(to_download, crispin_client.CHUNK_SIZE):
             self.download_and_commit_uids(
-                crispin_client, crispin_client.selected_folder_name, uids)
+                crispin_client, uids)
         return len(to_download)
 
 
