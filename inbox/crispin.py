@@ -1,6 +1,4 @@
-""" IMAPClient wrapper for the Nilas Sync Engine.
-
-"""
+""" IMAPClient wrapper for the Nilas Sync Engine. """
 import contextlib
 import re
 import time
@@ -408,7 +406,7 @@ class CrispinClient(object):
         canonical_name = 'inbox' if category == 'inbox' else None
 
         return RawFolder(name=name, canonical_name=canonical_name,
-                         category='extra')
+                         category=category)
 
     def folder_status(self, folder):
         status = [long(val) for val in self.conn.folder_status(
@@ -805,7 +803,6 @@ class GmailCrispinClient(CondStoreCrispinClient):
                     '\\Trash': 'trash'}
 
         category = None
-
         if '\\All' in flags:
             category = 'all'
         elif name.lower() == 'inbox':

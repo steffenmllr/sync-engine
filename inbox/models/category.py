@@ -17,7 +17,7 @@ log = get_logger()
 class Category(MailSyncBase, HasRevisions):
     API_OBJECT_NAME = 'category'
 
-    # Need `use_alter`!
+    # Need `use_alter` here to avoid circular dependencies
     namespace_id = Column(Integer,
                           ForeignKey('namespace.id', use_alter=True,
                                      name='category_fk1',
