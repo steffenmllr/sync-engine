@@ -32,8 +32,11 @@ class Category(MailSyncBase, HasRevisions):
 
     public_id = Column(String(MAX_INDEXABLE_LENGTH), nullable=False,
                        default=generate_public_id)
-    name = Column(String(MAX_INDEXABLE_LENGTH, collation='utf8mb4_bin'),
-                  nullable=True)
+
+    _name = Column(String(MAX_INDEXABLE_LENGTH, collation='utf8mb4_bin'),
+                   nullable=True)
+    canonical_name = Column(String(MAX_INDEXABLE_LENGTH), nullable=True)
+
     user_created = Column(Boolean, server_default=false(), nullable=False)
 
     @property
@@ -44,17 +47,13 @@ class Category(MailSyncBase, HasRevisions):
     def user_addable(self):
         return self.user_created
 
-    @property
-    def lowercase_name(self):
-        return self.name.lower()
-
     @classmethod
     def name_available(cls, name, account_id, db_session):
         name = name.lower()
         if name in CANONICAL_NAMES or name in RESERVED_NAMES:
             return False
 
-        if (name,) in db_session.query(cls.name).filter(
+        if (name,) in db_session.query(cls._name).filter(
                 cls.account_id == account_id).all():
             return False
 
@@ -63,27 +62,30 @@ class Category(MailSyncBase, HasRevisions):
     @classmethod
     def find_or_create(cls, session, namespace_id, name, canonical_name=None,
                        user_created=False):
-        # TODO[k]:
-        # 1. Should we store a Category.type = Folder/Label and expose as such
-        # in API?
-        # 2. Check if we should do this to provide desired/ discussed
-        # API semantics -
-        category_name = canonical_name if canonical_name else name
-
         try:
             obj = session.query(cls).filter(
                 cls.namespace_id == namespace_id,
-                cls.name == category_name).one()
+                cls._name == name,
+                cls.canonical_name == canonical_name).one()
         except NoResultFound:
-            obj = cls(namespace_id=namespace_id, name=category_name,
-                      user_created=user_created)
+            obj = cls(namespace_id=namespace_id, _name=name,
+                      canonical_name=canonical_name, user_created=user_created)
             session.add(obj)
         except MultipleResultsFound:
-            log.error('Duplicate category rows for namespace_id {}, name {}'
-                      .format(namespace_id, category_name))
+            log.error('Duplicate category rows for namespace_id {}, name {}, '
+                      'canonical_name: {}'.
+                      format(namespace_id, name, canonical_name))
             raise
 
         return obj
 
-    __table_args__ = (UniqueConstraint('namespace_id', 'name'),
+    @property
+    def name(self):
+        return self.canonical_name if self.canonical_name else self._name
+
+    @property
+    def localized_name(self):
+        return self._name
+
+    __table_args__ = (UniqueConstraint('namespace_id', '_name'),
                       UniqueConstraint('namespace_id', 'public_id'))

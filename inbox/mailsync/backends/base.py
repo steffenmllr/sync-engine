@@ -25,7 +25,7 @@ class MailsyncDone(GreenletExit):
     pass
 
 
-def save_folder_names(log, account_id, folder_names, db_session):
+def save_folder_names(account_id, folder_names, db_session):
     """
     Save the folders/labels present on the remote backend for an account.
 

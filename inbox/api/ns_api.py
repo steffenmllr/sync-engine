@@ -4,8 +4,6 @@ import email.header
 import uuid
 import gevent
 import time
-from inbox.models.session import session_scope
-
 
 from flask import request, g, Blueprint, make_response, Response
 from flask import jsonify as flask_jsonify
@@ -13,6 +11,7 @@ from flask.ext.restful import reqparse
 from sqlalchemy import asc, or_, func
 from sqlalchemy.orm.exc import NoResultFound
 
+from inbox.models.session import session_scope
 from inbox.models import (Message, Block, Part, Thread, Namespace,
                           Tag, Contact, Calendar, Event, Transaction)
 from inbox.api.sending import send_draft
@@ -35,18 +34,14 @@ from inbox.models.action_log import schedule_action, ActionError
 from inbox.models.session import InboxSession
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
-
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            ConflictError)
-
 from inbox.ignition import main_engine
 engine = main_engine()
-
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 1000
 LONG_POLL_REQUEST_TIMEOUT = 120
-
 
 app = Blueprint(
     'namespace_api',
