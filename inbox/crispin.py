@@ -377,6 +377,8 @@ class CrispinClient(object):
         return raw_folders
 
     def _process_folder(self, name, flags):
+        # TODO[[k]: Important/ Starred for generic IMAP?
+
         # Different providers have different names for folders, here
         # we have a default map for common name mapping, additional
         # mappings can be provided via the provider configuration file
