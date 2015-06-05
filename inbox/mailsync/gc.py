@@ -89,12 +89,6 @@ class DeleteHandler(gevent.Greenlet):
                     thread.subject = first_message.subject
                     thread.subjectdate = first_message.received_date
                     thread.recentdate = last_message.received_date
-                    unread_tag = thread.namespace.tags['unread']
-                    attachment_tag = thread.namespace.tags['attachment']
-                    if all(m.is_read for m in non_draft_messages):
-                        thread.tags.discard(unread_tag)
-                    if not any(m.attachments for m in non_draft_messages):
-                        thread.tags.discard(attachment_tag)
                 # YES this is at the right indentation level. Delete statements
                 # may cause InnoDB index locks to be acquired, so we opt to
                 # simply commit after each delete in order to prevent bulk

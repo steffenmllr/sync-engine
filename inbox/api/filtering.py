@@ -1,14 +1,14 @@
 from sqlalchemy import and_, or_, desc, asc, func
 from sqlalchemy.orm import subqueryload, contains_eager
 from inbox.models import (Contact, Event, Calendar, Message,
-                          MessageContactAssociation, Thread, Tag,
-                          TagItem, Block, Part)
+                          MessageContactAssociation, Thread,
+                          Block, Part)
 from inbox.models.event import RecurringEvent
 
 
 def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
             any_email, thread_public_id, started_before, started_after,
-            last_message_before, last_message_after, filename, tag, limit,
+            last_message_before, last_message_after, filename, limit,
             offset, view, db_session):
 
     if view == 'count':
@@ -38,13 +38,6 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
         filters.append(Thread.subject == subject)
 
     query = query.filter(*filters)
-
-    if tag is not None:
-        tag_query = db_session.query(TagItem).join(Tag). \
-            filter(or_(Tag.public_id == tag, Tag.name == tag),
-                   Tag.namespace_id == namespace_id).subquery()
-
-        query = query.join(tag_query)
 
     if from_addr is not None:
         from_query = db_session.query(Message.thread_id). \
@@ -100,10 +93,6 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
     # Eager-load some objects in order to make constructing API
     # representations faster.
     if view != 'ids':
-        query = query.options(
-            subqueryload('tagitems').joinedload('tag').
-            load_only('public_id', 'name'))
-
         if view == 'expanded':
             query = query.options(
                 subqueryload(Thread.messages).
@@ -133,7 +122,7 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
 def _messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
                         cc_addr, bcc_addr, any_email, thread_public_id,
                         started_before, started_after, last_message_before,
-                        last_message_after, filename, tag, limit, offset,
+                        last_message_after, filename, limit, offset,
                         view, db_session):
 
     if view == 'count':
@@ -173,11 +162,6 @@ def _messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
     if last_message_after is not None:
         filters.append(Thread.recentdate > last_message_after)
         filters.append(Thread.namespace_id == namespace_id)
-
-    if tag is not None:
-        query = query.join(TagItem).join(Tag). \
-            filter(or_(Tag.public_id == tag, Tag.name == tag),
-                   Tag.namespace_id == namespace_id)
 
     if to_addr is not None:
         to_query = db_session.query(MessageContactAssociation.message_id). \
@@ -245,25 +229,25 @@ def _messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
 
 def messages(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
              any_email, thread_public_id, started_before, started_after,
-             last_message_before, last_message_after, filename, tag, limit,
+             last_message_before, last_message_after, filename, limit,
              offset, view, db_session):
     return _messages_or_drafts(namespace_id, False, subject, from_addr,
                                to_addr, cc_addr, bcc_addr, any_email,
                                thread_public_id, started_before,
                                started_after, last_message_before,
-                               last_message_after, filename, tag, limit,
+                               last_message_after, filename, limit,
                                offset, view, db_session)
 
 
 def drafts(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
            any_email, thread_public_id, started_before, started_after,
-           last_message_before, last_message_after, filename, tag, limit,
+           last_message_before, last_message_after, filename, limit,
            offset, view, db_session):
     return _messages_or_drafts(namespace_id, True, subject, from_addr,
                                to_addr, cc_addr, bcc_addr, any_email,
                                thread_public_id, started_before,
                                started_after, last_message_before,
-                               last_message_after, filename, tag, limit,
+                               last_message_after, filename, limit,
                                offset, view, db_session)
 
 

@@ -21,11 +21,6 @@ class Account(MailSyncBase, HasPublicID, HasEmailAddress, HasRunState):
         """
         A constant, unique lowercase identifier for the account provider
         (e.g., 'gmail', 'eas'). Subclasses should override this.
-
-        We prefix provider folders with this string when we expose them as
-        tags through the API. E.g., a 'jobs' folder/label on a Gmail
-        backend is exposed as 'gmail-jobs'.
-
         """
         raise NotImplementedError
 

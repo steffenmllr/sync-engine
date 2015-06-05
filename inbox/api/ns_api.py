@@ -14,11 +14,11 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.models.session import session_scope
 from inbox.models import (Message, Block, Part, Thread, Namespace,
-                          Tag, Contact, Calendar, Event, Transaction)
+                          Contact, Calendar, Event, Transaction)
 from inbox.api.sending import send_draft
 from inbox.api.kellogs import APIEncoder
 from inbox.api import filtering
-from inbox.api.validation import (get_tags, get_attachments, get_calendar,
+from inbox.api.validation import (get_attachments, get_calendar,
                                   get_recipients, get_draft, valid_public_id,
                                   valid_event, valid_event_update, timestamp,
                                   bounded_str, view, strict_parse_args,
@@ -124,142 +124,6 @@ def index():
     return g.encoder.jsonify(g.namespace)
 
 
-##
-# Tags
-##
-@app.route('/tags/')
-def tag_query_api():
-    g.parser.add_argument('tag_name', type=bounded_str, location='args')
-    g.parser.add_argument('tag_id', type=valid_public_id, location='args')
-    g.parser.add_argument('view', type=view, location='args')
-
-    args = strict_parse_args(g.parser, request.args)
-
-    if args['view'] == 'count':
-        query = g.db_session.query(func.count(Tag.id))
-    elif args['view'] == 'ids':
-        query = g.db_session.query(Tag.public_id)
-    else:
-        query = g.db_session.query(Tag)
-
-    query = query.filter(Tag.namespace_id == g.namespace.id)
-
-    if args['tag_name']:
-        query = query.filter_by(name=args['tag_name'])
-
-    if args['tag_id']:
-        query = query.filter_by(public_id=args['tag_id'])
-
-    if args['view'] == 'count':
-        return g.encoder.jsonify({"count": query.one()[0]})
-
-    query = query.order_by(Tag.id)
-    query = query.limit(args['limit'])
-    if args['offset']:
-        query = query.offset(args['offset'])
-
-    if args['view'] == 'ids':
-        results = [x[0] for x in query.all()]
-    else:
-        results = query.all()
-    return g.encoder.jsonify(results)
-
-
-@app.route('/tags/<public_id>', methods=['GET'])
-def tag_read_api(public_id):
-    try:
-        valid_public_id(public_id)
-        tag = g.db_session.query(Tag).filter(
-            Tag.public_id == public_id,
-            Tag.namespace_id == g.namespace.id).one()
-    except NoResultFound:
-        raise NotFoundError('No tag found')
-
-    unread_tag = g.db_session.query(Tag).filter_by(
-        namespace_id=g.namespace.id,
-        name='unread').first()
-    if unread_tag:
-        tag.unread_count = tag.intersection(unread_tag.id, g.db_session)
-        tag.thread_count = tag.count_threads()
-    return g.encoder.jsonify(tag)
-
-
-@app.route('/tags/<public_id>', methods=['PUT'])
-def tag_update_api(public_id):
-    try:
-        valid_public_id(public_id)
-        tag = g.db_session.query(Tag).filter(
-            Tag.public_id == public_id,
-            Tag.namespace_id == g.namespace.id).one()
-    except NoResultFound:
-        raise NotFoundError('No tag found')
-
-    data = request.get_json(force=True)
-    if not ('name' in data.keys() and isinstance(data['name'], basestring)):
-        raise InputError('Malformed tag update request')
-    if 'namespace_id' in data.keys():
-        ns_id = data['namespace_id']
-        valid_public_id(ns_id)
-        if ns_id != g.namespace.public_id:
-            raise InputError('Cannot change the namespace on a tag.')
-    if not tag.user_created:
-        raise InputError('Cannot modify tag {}'.format(public_id))
-    # Lowercase tag name, regardless of input casing.
-    new_name = data['name'].lower()
-
-    if new_name != tag.name:  # short-circuit rename to same value
-        if not Tag.name_available(new_name, g.namespace.id, g.db_session):
-            return err(409, 'Tag name already used')
-        tag.name = new_name
-        g.db_session.commit()
-
-    return g.encoder.jsonify(tag)
-
-
-@app.route('/tags/', methods=['POST'])
-def tag_create_api():
-    data = request.get_json(force=True)
-    if not ('name' in data.keys() and isinstance(data['name'], basestring)):
-        raise InputError('Malformed tag request')
-    if 'namespace_id' in data.keys():
-        ns_id = data['namespace_id']
-        if ns_id is not None:
-            valid_public_id(ns_id)
-            if ns_id != g.namespace.public_id:
-                raise InputError('Cannot change the namespace on a tag.')
-    # Lowercase tag name, regardless of input casing.
-    tag_name = data['name'].lower()
-    if not Tag.name_available(tag_name, g.namespace.id, g.db_session):
-        return err(409, 'Tag name not available')
-    if len(tag_name) > MAX_INDEXABLE_LENGTH:
-        raise InputError('Tag name is too long.')
-
-    tag = Tag(name=tag_name, namespace=g.namespace, user_created=True)
-    g.db_session.commit()
-    return g.encoder.jsonify(tag)
-
-
-@app.route('/tags/<public_id>', methods=['DELETE'])
-def tag_delete_api(public_id):
-    try:
-        valid_public_id(public_id)
-        t = g.db_session.query(Tag).filter(
-            Tag.public_id == public_id,
-            Tag.namespace_id == g.namespace.id).one()
-
-        if not t.user_created:
-            raise InputError('delete non user-created tag.')
-
-        g.db_session.delete(t)
-        g.db_session.commit()
-
-        # This is essentially what our other API endpoints do after deleting.
-        # Effectively no error == success
-        return g.encoder.jsonify(None)
-    except NoResultFound:
-        raise NotFoundError('No tag found')
-
-
 #
 # Threads
 #
@@ -279,7 +143,6 @@ def thread_query_api():
                           location='args')
     g.parser.add_argument('filename', type=bounded_str, location='args')
     g.parser.add_argument('thread_id', type=valid_public_id, location='args')
-    g.parser.add_argument('tag', type=bounded_str, location='args')
     g.parser.add_argument('view', type=view, location='args')
 
     args = strict_parse_args(g.parser, request.args)
@@ -298,7 +161,6 @@ def thread_query_api():
         last_message_before=args['last_message_before'],
         last_message_after=args['last_message_after'],
         filename=args['filename'],
-        tag=args['tag'],
         limit=args['limit'],
         offset=args['offset'],
         view=args['view'],
@@ -362,49 +224,7 @@ def thread_api_update(public_id):
     except NoResultFound:
         raise NotFoundError("Couldn't find thread `{0}` ".format(public_id))
     data = request.get_json(force=True)
-    if not set(data).issubset({'add_tags', 'remove_tags', 'version'}):
-        raise InputError('Can only add or remove tags from thread.')
-    if (data.get('version') is not None and data.get('version') !=
-            thread.version):
-        raise ConflictError('Thread {} has been updated to version {}'.
-                            format(thread.public_id, thread.version))
-
-    removals = data.get('remove_tags', [])
-
-    for tag_identifier in removals:
-        tag = g.db_session.query(Tag).filter(
-            Tag.namespace_id == g.namespace.id,
-            or_(Tag.public_id == tag_identifier,
-                Tag.name == tag_identifier)).first()
-        if tag is None:
-            raise NotFoundError("Couldn't find tag {}".format(tag_identifier))
-        if not tag.user_removable:
-            raise InputError('Cannot remove read-only tag {}'.
-                             format(tag_identifier))
-
-        try:
-            thread.remove_tag(tag, execute_action=True)
-        except ActionError as e:
-            return err(e.error, str(e))
-
-    additions = data.get('add_tags', [])
-    for tag_identifier in additions:
-        tag = g.db_session.query(Tag).filter(
-            Tag.namespace_id == g.namespace.id,
-            or_(Tag.public_id == tag_identifier,
-                Tag.name == tag_identifier)).first()
-        if tag is None:
-            raise NotFoundError("Couldn't find tag {}".format(tag_identifier))
-        if not tag.user_addable:
-            raise InputError('Cannot add read-only tag {}'.
-                             format(tag_identifier))
-
-        try:
-            thread.apply_tag(tag, execute_action=True)
-        except ActionError as e:
-            return err(e.error, str(e))
-
-    g.db_session.commit()
+    # STOPSHIP(emfree): implement.
     return g.encoder.jsonify(thread)
 
 
@@ -436,7 +256,6 @@ def message_query_api():
                           location='args')
     g.parser.add_argument('filename', type=bounded_str, location='args')
     g.parser.add_argument('thread_id', type=valid_public_id, location='args')
-    g.parser.add_argument('tag', type=bounded_str, location='args')
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
     messages = filtering.messages(
@@ -453,7 +272,6 @@ def message_query_api():
         last_message_before=args['last_message_before'],
         last_message_after=args['last_message_after'],
         filename=args['filename'],
-        tag=args['tag'],
         limit=args['limit'],
         offset=args['offset'],
         view=args['view'],
@@ -500,24 +318,7 @@ def message_api(public_id):
             return Response(message.full_body.data, mimetype='message/rfc822')
         return g.encoder.jsonify(message)
     elif request.method == 'PUT':
-        data = request.get_json(force=True)
-        if data.keys() != ['unread'] or not isinstance(data['unread'], bool):
-            raise InputError('Can only change the unread attribute of a '
-                             'message')
-
-        # TODO(emfree): Shouldn't allow this on messages that are actually
-        # drafts.
-
-        unread_tag = message.namespace.tags['unread']
-        unseen_tag = message.namespace.tags['unseen']
-        if data['unread']:
-            message.is_read = False
-            message.thread.apply_tag(unread_tag)
-        else:
-            message.is_read = True
-            message.thread.remove_tag(unseen_tag)
-            if all(m.is_read for m in message.thread.messages):
-                message.thread.remove_tag(unread_tag)
+        # STOPSHIP(emfree): implement
         return g.encoder.jsonify(message)
 
 
@@ -946,7 +747,6 @@ def draft_query_api():
                           location='args')
     g.parser.add_argument('filename', type=bounded_str, location='args')
     g.parser.add_argument('thread_id', type=valid_public_id, location='args')
-    g.parser.add_argument('tag', type=bounded_str, location='args')
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
     drafts = filtering.drafts(
@@ -963,7 +763,6 @@ def draft_query_api():
         last_message_before=args['last_message_before'],
         last_message_after=args['last_message_after'],
         filename=args['filename'],
-        tag=args['tag'],
         limit=args['limit'],
         offset=args['offset'],
         view=args['view'],
@@ -1020,13 +819,12 @@ def draft_update_api(public_id):
 
     subject = data.get('subject')
     body = data.get('body')
-    tags = get_tags(data.get('tags'), g.namespace.id, g.db_session)
     files = get_attachments(data.get('file_ids'), g.namespace.id, g.db_session)
 
     try:
         draft = update_draft(g.db_session, g.namespace.account, original_draft,
                              to, subject, body, files, cc, bcc, from_addr,
-                             reply_to, tags)
+                             reply_to)
     except ActionError as e:
         return err(e.error, str(e))
 

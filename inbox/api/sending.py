@@ -39,14 +39,7 @@ def send_draft(account, draft, db_session, schedule_remote_delete):
         draft.received_date = datetime.utcnow()
 
         # Update thread
-        sent_tag = account.namespace.tags['sent']
-        draft_tag = account.namespace.tags['drafts']
-        thread = draft.thread
-        thread.apply_tag(sent_tag)
-        # Remove the drafts tag from the thread if there are no more drafts.
-        if not draft.thread.drafts:
-            thread.remove_tag(draft_tag)
-        thread.update_from_message(None, draft)
+        draft.thread.update_from_message(None, draft)
     except Exception as e:
         log.error('Error in post-send processing', error=e, exc_info=True)
 
