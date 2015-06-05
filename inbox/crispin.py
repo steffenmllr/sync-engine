@@ -38,7 +38,6 @@ from inbox.util.misc import or_none, timed
 from inbox.basicauth import ValidationError
 from inbox.models.session import session_scope
 from inbox.models.account import Account
-
 from inbox.log import get_logger
 logger = get_logger()
 
@@ -48,11 +47,13 @@ __all__ = ['CrispinClient', 'GmailCrispinClient', 'CondStoreCrispinClient']
 Flags = namedtuple('Flags', 'flags')
 # Flags includes labels on Gmail because Gmail doesn't use \Draft.
 GmailFlags = namedtuple('GmailFlags', 'flags labels')
-
 GMetadata = namedtuple('GMetadata', 'msgid thrid')
 RawMessage = namedtuple(
     'RawImapMessage',
     'uid internaldate flags body g_thrid g_msgid g_labels')
+RawFolder = namedtuple(
+    'RawFolder',
+    'name canonical_name category')
 
 # Lazily-initialized map of account ids to lock objects.
 # This prevents multiple greenlets from concurrently creating duplicate
@@ -329,7 +330,7 @@ class CrispinClient(object):
 
         select_info['UIDVALIDITY'] = long(select_info['UIDVALIDITY'])
         self.selected_folder = (folder, select_info)
-        # don't propagate cached information from previous session
+        # Don't propagate cached information from previous session
         self._folder_names = None
         return uidvalidity_cb(self.account_id, folder, select_info)
 
@@ -347,16 +348,38 @@ class CrispinClient(object):
 
     def sync_folders(self):
         to_sync = []
-        folders = self.folder_names()
-        for tag in ('inbox', 'drafts', 'sent', 'starred', 'important',
-                    'archive', 'extra', 'spam', 'trash'):
-            if tag == 'extra' and tag in folders:
-                to_sync.extend(folders['extra'])
-            elif tag in folders:
-                to_sync.append(folders[tag])
+        for names in self.folder_names().itervalues():
+            to_sync.extend(names)
         return to_sync
 
     def folder_names(self, force_resync=False):
+        if force_resync or self._folder_names is None:
+            self._folder_names = defaultdict(list)
+
+            raw_folders = self.folders()
+            for f in raw_folders:
+                self._folder_names[f.category].append(f.name)
+
+        return self._folder_names
+
+    def folders(self):
+        raw_folders = []
+
+        folders = self._fetch_folder_list()
+        for flags, delimiter, name in folders:
+            if u'\\Noselect' in flags or u'\\NoSelect' in flags \
+                    or u'\\NonExistent' in flags:
+                # Special folders that can't contain messages
+                continue
+
+            # TODO: Internationalization support
+
+            raw_folder = self._process_folder(name, flags)
+            raw_folders.append(raw_folder)
+
+        return raw_folders
+
+    def _process_folder(self, name, flags):
         # Different providers have different names for folders, here
         # we have a default map for common name mapping, additional
         # mappings can be provided via the provider configuration file
@@ -365,41 +388,28 @@ class CrispinClient(object):
                               'ARCHIVE': 'archive', 'SENT': 'sent',
                               'TRASH': 'trash', 'SPAM': 'spam'}
 
-        # Some providers also provide flags to determine common folders
-        # Here we read these flags and apply the mapping
-        flag_to_folder_map = {'\\Trash': 'trash', '\\Sent': 'sent',
-                              '\\Drafts': 'drafts', '\\Junk': 'spam',
-                              '\\Inbox': 'inbox', '\\Spam': 'spam'}
-
         # Additionally we provide a custom mapping for providers that
         # don't fit into the defaults.
         folder_map = self.provider_info.get('folder_map', {})
 
-        if force_resync or self._folder_names is None:
-            folders = self._fetch_folder_list()
-            self._folder_names = dict()
-            for flags, delimiter, name in folders:
-                if u'\\Noselect' in flags or u'\\NoSelect' in flags \
-                        or u'\\NonExistent' in flags:
-                    # special folders that can't contain messages
-                    pass
-                # TODO: internationalization support
-                elif name in folder_map:
-                    self._folder_names[folder_map[name]] = name
-                elif name.upper() in default_folder_map:
-                    self._folder_names[default_folder_map[name.upper()]] = name
-                else:
-                    matched = False
-                    for flag in flags:
-                        if flag in flag_to_folder_map:
-                            self._folder_names[flag_to_folder_map[flag]] = name
-                            matched = True
-                    if not matched:
-                        self._folder_names.setdefault(
-                            'extra', list()).append(name)
+        # Some providers also provide flags to determine common folders
+        # Here we read these flags and apply the mapping
+        flag_map = {'\\Trash': 'trash', '\\Sent': 'sent', '\\Drafts': 'drafts',
+                    '\\Junk': 'spam', '\\Inbox': 'inbox', '\\Spam': 'spam'}
 
-        # TODO: support subfolders
-        return self._folder_names
+        category = default_folder_map.get(name.upper())
+
+        if not category:
+            category = folder_map.get(name)
+
+        if not category:
+            for flag in flags:
+                category = flag_map.get(flag)
+
+        canonical_name = 'inbox' if category == 'inbox' else None
+
+        return RawFolder(name=name, canonical_name=canonical_name,
+                         category='extra')
 
     def folder_status(self, folder):
         status = [long(val) for val in self.conn.folder_status(
@@ -411,10 +421,12 @@ class CrispinClient(object):
         self.conn.create_folder(name)
 
     def search_uids(self, criteria):
-        """ Find not-deleted UIDs in this folder matching the criteria.
+        """
+        Find not-deleted UIDs in this folder matching the criteria.
 
         See http://tools.ietf.org/html/rfc3501.html#section-6.4.4 for valid
         criteria.
+
         """
         full_criteria = ['UNDELETED']
         if isinstance(criteria, list):
@@ -534,26 +546,32 @@ class CrispinClient(object):
             self.conn.add_flags(uids, ['\\Seen'])
 
     def save_draft(self, message, date=None):
-        assert self.selected_folder_name == self.folder_names()['drafts'], \
-            'Must select drafts folder first ({0})'.format(
-                self.selected_folder_name)
+        assert self.selected_folder_name in self.folder_names()['drafts'], \
+            'Must select a drafts folder first ({0})'.\
+            format(self.selected_folder_name)
 
         self.conn.append(self.selected_folder_name, message, ['\\Draft',
                                                               '\\Seen'], date)
 
     def create_message(self, message, date=None):
-        """Create a message on the server. Only used to fix server-side bugs,
-        like iCloud not saving Sent messages"""
-        assert self.selected_folder_name == self.folder_names()['sent'], \
-            'Must select sent folder first ({0})'.format(
-                self.selected_folder_name)
+        """
+        Create a message on the server. Only used to fix server-side bugs,
+        like iCloud not saving Sent messages.
+
+        """
+        assert self.selected_folder_name in self.folder_names()['sent'], \
+            'Must select sent folder first ({0})'.\
+            format(self.selected_folder_name)
 
         self.conn.append(self.selected_folder_name, message, [], date)
 
     def fetch_headers(self, uids):
-        """Fetch headers for the given uids. Chunked because certain providers
+        """
+        Fetch headers for the given uids. Chunked because certain providers
         fail with 'Command line too large' if you feed them too many uids at
-        once."""
+        once.
+
+        """
         headers = {}
         for uid_chunk in chunk(uids, 100):
             headers.update(self.conn.fetch(
@@ -581,13 +599,17 @@ class CrispinClient(object):
         return results
 
     def delete_draft(self, inbox_uid, message_id_header):
-        """Delete a draft, as identified either by its X-Inbox-Id or by its
+        """
+        Delete a draft, as identified either by its X-Inbox-Id or by its
         Message-Id header. We first delete the message from the Drafts folder,
-        and then also delete it from the Trash folder if necessary."""
-        drafts_folder_name = self.folder_names()['drafts']
-        trash_folder_name = self.folder_names()['trash']
+        and then also delete it from the Trash folder if necessary.
+
+        """
+        drafts_folder_name = self.folder_names()['drafts'][0]
         self.conn.select_folder(drafts_folder_name)
         self._delete_message(inbox_uid, message_id_header)
+
+        trash_folder_name = self.folder_names()['trash'][0]
         self.conn.select_folder(trash_folder_name)
         self._delete_message(inbox_uid, message_id_header)
 
@@ -597,6 +619,7 @@ class CrispinClient(object):
         header or the Message-Id header to locate it. Does nothing if no
         matching messages are found, or if more than one matching message is
         found.
+
         """
         assert inbox_uid or message_id_header, 'Need at least one header'
         if inbox_uid:
@@ -675,7 +698,8 @@ class GmailCrispinClient(CondStoreCrispinClient):
     PROVIDER = 'gmail'
 
     def sync_folders(self):
-        """ Gmail-specific list of folders to sync.
+        """
+        Gmail-specific list of folders to sync.
 
         In Gmail, every message is a subset of All Mail, with the exception of
         the Trash and Spam folders. So we only sync All Mail, Trash, Spam,
@@ -687,12 +711,15 @@ class GmailCrispinClient(CondStoreCrispinClient):
         -------
         list
             Folders to sync (as strings).
+
         """
-        required_folders = {'all': "All Mail", 'trash': "Trash"}
+        required_folders = {'all': 'All Mail', 'trash': 'Trash'}
+        have_folders = self.folder_names()
+
         missing_folders = []
         # All Mail is required to sync all mail. Trash is required for deletes.
         for folder in required_folders:
-            if folder not in self.folder_names():
+            if folder not in have_folders:
                 missing_folders.append(required_folders.get(folder))
         if len(missing_folders) > 0:
             raise GmailSettingError(
@@ -702,19 +729,20 @@ class GmailCrispinClient(CondStoreCrispinClient):
                 "https://mail.google.com/mail/#settings/labels"
                 .format(self.account_id, self.email_address,
                         " and ".join(missing_folders)))
-        folders = [self.folder_names()['all'], self.folder_names()['trash']]
-        # Spam is non-essential, so don't error out if it's absent.
-        if 'spam' in self.folder_names():
-            folders.append(self.folder_names()['spam'])
+
+        folders = [have_folders['all'][0], have_folders['trash'][0]]
+
         return folders
 
     def flags(self, uids):
-        """ Gmail-specific flags.
+        """
+        Gmail-specific flags.
 
         Returns
         -------
         dict
             Mapping of `uid` (str) : GmailFlags.
+
         """
         data = self.conn.fetch(uids, ['FLAGS X-GM-LABELS'])
         uid_set = set(uids)
@@ -722,12 +750,14 @@ class GmailCrispinClient(CondStoreCrispinClient):
                 for uid, ret in data.items() if uid in uid_set}
 
     def g_msgids(self, uids):
-        """ X-GM-MSGIDs for the given UIDs.
+        """
+        X-GM-MSGIDs for the given UIDs.
 
         Returns
         -------
         dict
             Mapping of `uid` (long) : `g_msgid` (long)
+
         """
         data = self.conn.fetch(uids, ['X-GM-MSGID'])
         uid_set = set(uids)
@@ -735,48 +765,62 @@ class GmailCrispinClient(CondStoreCrispinClient):
                 for uid, ret in data.items() if uid in uid_set}
 
     def folder_names(self, force_resync=False):
-        """ Parses out Gmail-specific folder names based on Gmail IMAP flags.
+        if force_resync or self._folder_names is None:
+            self._folder_names = defaultdict(list)
+
+            raw_folders = self.folders()
+            for f in raw_folders:
+                self._folder_names[f.category].append(f.name)
+
+        return self._folder_names
+
+    def folders(self):
+        """
+        Parses out Gmail-specific folder names based on Gmail IMAP flags.
 
         If the user's account is localized to a different language, it will
         return the proper localized string.
 
         Caches the call since we use it all over the place and folders never
         change names during a session.
+
         """
-        if force_resync or self._folder_names is None:
-            folders = self._fetch_folder_list()
-            self._folder_names = dict()
-            for flags, delimiter, name in folders:
-                if u'\\Noselect' in flags or u'\\NoSelect' in flags \
-                        or u'\\NonExistent' in flags:
-                    # special folders that can't contain messages, usually
-                    # just '[Gmail]'
-                    pass
-                elif '\\All' in flags:
-                    self._folder_names['all'] = name
-                elif name.lower() == 'inbox':
-                    self._folder_names[name.lower()] = name.capitalize()
-                    continue
-                else:
-                    for flag in ['\\Drafts', '\\Important', '\\Sent', '\\Junk',
-                                 '\\Flagged', '\\Trash']:
-                        # find localized names for Gmail's special folders
-                        if flag in flags:
-                            k = flag.replace('\\', '').lower()
-                            if k == 'flagged':
-                                self._folder_names['starred'] = name
-                            elif k == 'junk':
-                                self._folder_names['spam'] = name
-                            else:
-                                self._folder_names[k] = name
-                            break
-                    else:
-                        # everything else is a label
-                        self._folder_names.setdefault('labels', list())\
-                            .append(name)
-            if 'labels' in self._folder_names:
-                self._folder_names['labels'].sort()
-        return self._folder_names
+        raw_folders = []
+
+        folders = self._fetch_folder_list()
+        for flags, delimiter, name in folders:
+            if u'\\Noselect' in flags or u'\\NoSelect' in flags \
+                    or u'\\NonExistent' in flags:
+                # Special folders that can't contain messages, usually
+                # just '[Gmail]'
+                continue
+
+            raw_folder = self._process_folder(name, flags)
+            raw_folders.append(raw_folder)
+
+        return raw_folders
+
+    def _process_folder(self, name, flags):
+        flag_map = {'\\Drafts': 'drafts', '\\Important': 'important',
+                    '\\Sent': 'sent', '\\Junk': 'spam', '\\Flagged': 'starred',
+                    '\\Trash': 'trash'}
+
+        category = None
+
+        if '\\All' in flags:
+            category = 'all'
+        elif name.lower() == 'inbox':
+            category = 'inbox'
+        else:
+            for flag in flags:
+                if flag in flag_map:
+                    category = flag_map[flag]
+
+        canonical_name = category if category in ['inbox', 'all', 'trash'] \
+            else None
+
+        return RawFolder(name=name, canonical_name=canonical_name,
+                         category=category)
 
     def uids(self, uids):
         raw_messages = self.conn.fetch(uids, ['BODY.PEEK[] INTERNALDATE FLAGS',
@@ -838,9 +882,10 @@ class GmailCrispinClient(CondStoreCrispinClient):
         list
             All Mail UIDs (as integers), sorted most-recent first.
         """
-        assert self.selected_folder_name == self.folder_names()['all'], \
-            "must select All Mail first ({})".format(
-                self.selected_folder_name)
+        assert self.selected_folder_name in self.folder_names()['all'], \
+            'Must select All Mail first ({})'.\
+            format(self.selected_folder_name)
+
         criterion = 'X-GM-THRID {}'.format(g_thrid)
         uids = [long(uid) for uid in self.conn.search(['UNDELETED',
                                                        criterion])]
@@ -860,10 +905,11 @@ class GmailCrispinClient(CondStoreCrispinClient):
     # -----------------------------------------
 
     def archive_thread(self, g_thrid):
-        assert self.selected_folder_name == self.folder_names()['inbox'], \
-            "must select INBOX first ({0})".format(self.selected_folder_name)
+        assert self.selected_folder_name in self.folder_names()['inbox'], \
+            'Must select INBOX first ({0})'.format(self.selected_folder_name)
+
         uids = self.find_messages(g_thrid)
-        # delete from inbox == archive for Gmail
+        # Delete from inbox == archive for Gmail
         if uids:
             self.conn.delete_messages(uids)
 
@@ -929,7 +975,7 @@ class GmailCrispinClient(CondStoreCrispinClient):
         """
         uids = self.find_messages(g_thrid)
 
-        if folder_name == self.folder_names()['drafts']:
+        if folder_name in self.folder_names()['drafts']:
             # Remove Gmail's `Draft` label
             self.conn.remove_gmail_labels(uids, ['\Draft'])
 
@@ -938,7 +984,8 @@ class GmailCrispinClient(CondStoreCrispinClient):
             self.conn.expunge()
 
             # Delete from `Trash`
-            self.conn.select_folder(self.folder_names()['trash'])
+            trash_folder_name = self.folder_names()['trash'][0]
+            self.conn.select_folder(trash_folder_name)
 
             trash_uids = self.find_messages(g_thrid)
             self.conn.delete_messages(trash_uids)

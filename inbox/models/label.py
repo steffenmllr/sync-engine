@@ -41,10 +41,13 @@ class Label(MailSyncBase):
                         cascade='all, delete-orphan'))
 
     @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None):
+    def find_or_create(cls, session, account, name, canonical_name=None,
+                       category=None):
         q = session.query(cls).filter(cls.account_id == account.id)
 
-        if name is not None:
+        if canonical_name is not None:
+            q = q.filter(cls.canonical_name == canonical_name)
+        else:
             # g_label may not have unicode type (in particular for a numeric
             # label, e.g. '42'), so coerce to unicode.
             name = unicode(name)
@@ -57,9 +60,6 @@ class Label(MailSyncBase):
 
             q = q.filter_by(name=name)
 
-        if canonical_name is not None:
-            q = q.filter(cls.canonical_name == canonical_name)
-
         try:
             obj = session.query(cls).filter(
                 cls.account_id == account.id, cls.name == name,
@@ -67,10 +67,9 @@ class Label(MailSyncBase):
         except NoResultFound:
             obj = cls(account_id=account.id, name=name,
                       canonical_name=canonical_name)
-            with session.no_autoflush:
-                obj.category = Category.find_or_create(
-                    session, namespace_id=account.namespace.id, name=name,
-                    canonical_name=canonical_name)
+            obj.category = Category.find_or_create(
+                session, namespace_id=account.namespace.id, name=category,
+                localized_name=name)
             session.add(obj)
         except MultipleResultsFound:
             log.error('Duplicate label rows for name {}, account_id {}'

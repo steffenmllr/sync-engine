@@ -62,7 +62,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
         self.saved_uids = set()
 
     def is_all_mail(self, crispin_client):
-        return self.folder_name == crispin_client.folder_names()['all']
+        return self.folder_name in crispin_client.folder_names()['all']
 
     def should_idle(self, crispin_client):
         return self.is_all_mail(crispin_client)
@@ -212,7 +212,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
             # Since we always download messages via All Mail and create the
             # relevant All Mail ImapUids too at that time, we don't need to
             # create them again here if we're deduping All Mail downloads.
-            if crispin_client.selected_folder_name != \
+            if crispin_client.selected_folder_name not in \
                     crispin_client.folder_names()['all']:
                 add_new_imapuids(crispin_client, remote_g_metadata,
                                  self.syncmanager_lock, imapuid_only)

@@ -7,7 +7,6 @@ from inbox.util.debug import bind_context
 from inbox.util.concurrency import retry_and_report_killed
 from inbox.util.itert import partition
 from inbox.models import Account, Folder, Label
-from inbox.models.constants import CANONICAL_NAMES
 from inbox.models.session import session_scope
 from inbox.mailsync.exc import SyncException
 from inbox.heartbeat.status import clear_heartbeat_status
@@ -25,7 +24,7 @@ class MailsyncDone(GreenletExit):
     pass
 
 
-def save_folder_names(account_id, folder_names, db_session):
+def save_folder_names(db_session, account_id, raw_folders):
     """
     Save the folders/labels present on the remote backend for an account.
 
@@ -51,22 +50,26 @@ def save_folder_names(account_id, folder_names, db_session):
 
     """
     account = db_session.query(Account).get(account_id)
-    assert 'inbox' in folder_names, 'Account {} has no detected inbox folder'\
-        .format(account.email_address)
+
+    remote_canonical_folders = [f.canonical_name for f in raw_folders
+                                if f.canonical_name is not None]
+    remote_folders_or_labels = [f.name for f in raw_folders
+                                if f.canonical_name is None]
+
+    assert 'inbox' in remote_canonical_folders, \
+        'Account {} has no detected inbox folder'.format(account.email_address)
 
     folders = db_session.query(Folder).filter(
-        Folder.account_id == account.id).all()
+        Folder.account_id == account_id).all()
     local_canonical_folders = {f.canonical_name: f for f in folders
                                if f.canonical_name}
     local_folders = {f.name: f for f in folders if not f.canonical_name}
     local_labels = {l.name: l for l in db_session.query(Label).filter(
-                    Label.account_id == account.id).all()}
+                    Label.account_id == account_id).all()}
 
     # Delete canonical folders no longer present on the remote.
     # In the case of Gmail, delete the matching label too.
 
-    remote_canonical_folders = [name for name in folder_names if name not in
-                                ('extra', 'labels')]
     discard = \
         set(local_canonical_folders.iterkeys()) - set(remote_canonical_folders)
     for name in discard:
@@ -80,35 +83,37 @@ def save_folder_names(account_id, folder_names, db_session):
         if label:
             db_session.delete(label)
 
-    # Delete other folders no longer present on the remote.
+    # Delete other folders/ labels no longer present on the remote.
+    # In the case of generic Imap, there are Folders;
+    # for Gmail, these are Labels.
+
     # Not applicable to Gmail
-    remote_folders = folder_names.get('extra', [])
-    discard = set(local_folders.iterkeys()) - set(remote_folders)
+    discard = set(local_folders.iterkeys()) - set(remote_folders_or_labels)
     for name in discard:
         log.info('Folder deleted from remote', account_id=account_id,
                  name=name)
         db_session.delete(local_folders[name])
 
-    # Delete labels no longer present on the remote.
     # Only applicable to Gmail
-    remote_labels = folder_names.get('labels', [])
-    discard = set(local_labels.iterkeys()) - set(remote_labels)
+    discard = set(local_labels.iterkeys()) - set(remote_folders_or_labels)
     for name in discard:
         log.info('Label deleted from remote', account_id=account_id, name=name)
         db_session.delete(local_labels[name])
 
     # Create new Folders and Labels
-    for canonical_name in folder_names:
-        if canonical_name in CANONICAL_NAMES:
-            folder = Folder.find_or_create(db_session, account, None,
-                                           canonical_name)
-            if folder.name != folder_names[canonical_name]:
+    for raw_folder in raw_folders:
+        name, canonical_name, category = \
+            raw_folder.name, raw_folder.canonical_name, raw_folder.category
+
+        if canonical_name is not None:
+            folder = Folder.find_or_create(db_session, account, name,
+                                           canonical_name, category)
+            if folder.name != name:
                 log.warn('Canonical folder name changed on remote',
                          account_id=account_id,
                          canonical_name=canonical_name,
-                         new_name=folder_names[canonical_name],
-                         name=folder.name)
-            folder.name = folder_names[canonical_name]
+                         new_name=name, name=folder.name)
+            folder.name = name
 
             attr_name = '{}_folder'.format(canonical_name)
             id_attr_name = '{}_folder_id'.format(canonical_name)
@@ -118,27 +123,26 @@ def save_folder_names(account_id, folder_names, db_session):
                 setattr(account, attr_name, folder)
 
             if account.discriminator == 'gmailaccount':
-                label = Label.find_or_create(db_session, account, None,
-                                             canonical_name)
-                label.name = folder_names[canonical_name]
+                label = Label.find_or_create(db_session, account, name,
+                                             canonical_name, category)
+                label.name = name
 
-        elif canonical_name == 'extra':
-            for name in folder_names['extra']:
-                Folder.find_or_create(db_session, account, name)
-
-        elif canonical_name == 'labels':
-            for name in folder_names['labels']:
-                Label.find_or_create(db_session, account, name)
+        elif account.discriminator == 'gmailaccount':
+            Label.find_or_create(db_session, account, name, canonical_name,
+                                 category)
 
         else:
-            raise Exception('Unrecognized folder')
+            Folder.find_or_create(db_session, account, name, canonical_name,
+                                  category)
 
     db_session.commit()
 
 
 def gevent_check_join(log, threads, errmsg):
-    """ Block until all threads have completed and throw an error if threads
-        are not successful.
+    """
+    Block until all threads have completed and throw an error if threads
+    are not successful.
+
     """
     joinall(threads)
     errors = [thread.exception for thread in threads
@@ -215,9 +219,11 @@ def commit_uids(db_session, new_uids, provider):
 
 
 def new_or_updated(uids, local_uids):
-    """ HIGHESTMODSEQ queries return a list of messages that are *either*
-        new *or* updated. We do different things with each, so we need to
-        sort out which is which.
+    """
+    HIGHESTMODSEQ queries return a list of messages that are *either*
+    new *or* updated. We do different things with each, so we need to
+    sort out which is which.
+
     """
     return partition(lambda x: x in local_uids, uids)
 
@@ -238,6 +244,7 @@ class BaseMailSyncMonitor(Greenlet):
         How often to check for commands.
     retry_fail_classes : list
         Exceptions to *not* retry on.
+
     """
     def __init__(self, account, heartbeat=1, retry_fail_classes=[]):
         bind_context(self, 'mailsyncmonitor', account.id)
