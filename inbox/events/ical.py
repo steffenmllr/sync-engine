@@ -14,7 +14,6 @@ from util import serialize_datetime
 from timezones import timezones_table
 
 from inbox.log import get_logger
-from inbox.sendmail.base import get_sendmail_client, SendMailException
 log = get_logger()
 
 
@@ -35,7 +34,6 @@ def events_from_ics(namespace, calendar, ics_str):
     # See: https://tools.ietf.org/html/rfc5546#section-3.2
     calendar_method = None
 
-    print ics_str
     for component in cal.walk():
         if component.name == "VCALENDAR":
             calendar_method = component.get('method')
@@ -435,6 +433,7 @@ def generate_rsvp(message, status, account):
 
 
 def send_rsvp(ical_data, account):
+    from inbox.sendmail.base import get_sendmail_client, SendMailException
     ical_file = ical_data["cal"]
     rsvp_to = ical_data["organizer_email"]
 
@@ -451,5 +450,4 @@ def send_rsvp(ical_data, account):
     msg.headers['Subject'] = "Nylas RSVP"
 
     final_message = msg.to_string()
-    print final_message
     sendmail_client._send([rsvp_to], final_message)
