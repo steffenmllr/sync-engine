@@ -35,6 +35,7 @@ from inbox.models.action_log import schedule_action, ActionError
 from inbox.models.session import InboxSession
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
+from inbox.events.ical import generate_rsvp, send_rsvp
 
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            ConflictError)
@@ -740,6 +741,41 @@ def event_delete_api(public_id):
                     calendar_uid=event.calendar.uid)
     g.db_session.delete(event)
     g.db_session.commit()
+    return g.encoder.jsonify(None)
+
+
+@app.route('/events/<public_id>/rsvp', methods=['POST'])
+def event_rsvp_api(public_id):
+    valid_public_id(public_id)
+    try:
+        event = g.db_session.query(Event).filter(
+            Event.public_id == public_id,
+            Event.namespace_id == g.namespace.id).one()
+    except NoResultFound:
+        raise NotFoundError("Couldn't find event {0}".format(public_id))
+    if event.message is None:
+        raise InputError('This is not a message imported from an iCalendar invite.')
+
+    data = request.get_json(force=True)
+
+    # Note: this assumes that the email invite was directly addressed to us
+    # (i.e: that there's no email alias to redirect ben.bitdiddle@nylas
+    #  to ben@nylas.)
+    addresses = [p["email"] for p in event.participants]
+
+    account = g.namespace.account
+    email = account.email_address
+    if email not in addresses:
+        raise InputError('Cannot find the %s among the participants' % email)
+
+    if 'status' not in data:
+        raise InputError('Cannot RSVP to an event without a status')
+
+    if data['status'] not in ['yes', 'no', 'maybe']:
+        raise InputError('Invalid status')
+
+    ical_data = generate_rsvp(event.message, data["status"], account)
+    send_rsvp(ical_data, account)
     return g.encoder.jsonify(None)
 
 

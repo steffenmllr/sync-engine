@@ -3,14 +3,18 @@ import pytz
 import arrow
 import traceback
 from datetime import datetime, date
+import icalendar
 from icalendar import Calendar as iCalendar
 
 from inbox.models.event import Event, EVENT_STATUSES
 from inbox.events.util import MalformedEventError
 from inbox.util.addr import canonicalize_address
+from flanker import mime
+from util import serialize_datetime
 from timezones import timezones_table
 
 from inbox.log import get_logger
+from inbox.sendmail.base import get_sendmail_client, SendMailException
 log = get_logger()
 
 
@@ -31,6 +35,7 @@ def events_from_ics(namespace, calendar, ics_str):
     # See: https://tools.ietf.org/html/rfc5546#section-3.2
     calendar_method = None
 
+    print ics_str
     for component in cal.walk():
         if component.name == "VCALENDAR":
             calendar_method = component.get('method')
@@ -241,6 +246,14 @@ def import_attached_events(db_session, account, message):
     """Import events from a file into the 'Emailed events' calendar."""
 
     assert account is not None
+    from_addr = message.from_addr[0][1]
+
+    # FIXME @karim - Don't import iCalendar events from messages we've sent.
+    # This is only a stopgap measure -- what we need to have instead is
+    # smarter event merging (i.e: looking at whether the sender is the
+    # event organizer or not, and if the sequence number got incremented).
+    if from_addr == account.email_address:
+        return
 
     for part in message.attached_event_files:
         try:
@@ -323,3 +336,120 @@ def import_attached_events(db_session, account, message):
                     existing_event.participants = []
                     for participant in merged_participants:
                         existing_event.participants.append(participant)
+
+
+def _generate_individual_rsvp(message, status, account, ical_str):
+    cal = iCalendar.from_ical(ical_str)
+
+    uid = None
+    organizer = None
+    dtstamp = serialize_datetime(datetime.utcnow())
+    start = None
+    end = None
+    created = None
+    description = None
+    location = None
+    summary = None
+    transp = None
+
+    number_of_vevent_sections = 0
+    for component in cal.walk():
+        if component.name == "VCALENDAR":
+            calendar_method = component.get('method')
+
+            # Is this an invite? If not we can't RSVP to it.
+            if calendar_method != 'REQUEST':
+                return None
+
+        if component.name == "VEVENT":
+            uid = str(component.get('uid'))
+            organizer = component.get('organizer')
+            start = component.get('dtstart')
+            end = component.get('dtend')
+            created = component.get('created')
+            description = component.get('description')
+            location = component.get('location')
+            summary = component.get('summary')
+            transp = component.get('transp')
+
+            number_of_vevent_sections += 1
+
+    # This is a sanity check. We shouldn't receive an empty event --
+    # especially since this is an autoimported event, but you never know.
+    if number_of_vevent_sections == 0:
+        return None
+
+    # Another one. In theory we shouldn't receive an invite with more
+    # than one event.
+    assert number_of_vevent_sections < 2, "Calendar containing two events."
+
+    if organizer is None or uid is None:
+        return None
+
+    cal = iCalendar()
+    cal.add('PRODID', '-//Nylas sync engine//nylas.com//')
+    cal.add('METHOD', 'REPLY')
+    cal.add('VERSION', '2.0')
+    cal.add('CALSCALE', 'GREGORIAN')
+    event = icalendar.Event()
+    event['uid'] = uid
+    event['organizer'] = organizer
+    event['sequence'] = 0
+    event['status'] = 'CONFIRMED'
+    event['last-modified'] = dtstamp
+    event['dtstamp'] = dtstamp
+    event['created'] = created
+    event['dtstart'] = start
+    event['dtend'] = end
+    event['description'] = description
+    event['location'] = location
+    event['summary'] = summary
+    event['transp'] = transp
+
+    attendee = icalendar.vCalAddress('MAILTO:{}'.format(account.email_address))
+    attendee.params['cn'] = account.name
+    attendee.params['partstat'] = 'ACCEPTED'
+    event.add('attendee', attendee, encode=0)
+    cal.add_component(event)
+
+    organizer_email = unicode(organizer)
+    if 'MAILTO:' in organizer_email or 'mailto:' in organizer_email:
+        organizer_email = organizer_email[7:]
+
+    ret = {}
+    ret["cal"] = cal
+    ret["organizer_email"] = organizer_email
+
+    return ret
+
+
+def generate_rsvp(message, status, account):
+    # Generates an iCalendar file to RSVP to an invite.
+    for part in message.attached_event_files:
+        # Note: we return as soon as we've found an iCalendar file because
+        # most invite emails contain multiple copies of the same file, in the
+        # body and as an attachment.
+        rsvp = _generate_individual_rsvp(message, status, account, part.block.data)
+        if rsvp is not None:
+            return rsvp
+
+
+def send_rsvp(ical_data, account):
+    ical_file = ical_data["cal"]
+    rsvp_to = ical_data["organizer_email"]
+
+    sendmail_client = get_sendmail_client(account)
+
+    msg = mime.create.multipart('alternative')
+    msg.append(
+        mime.create.text('plain', "Hello,\n\nI'm hereby RSVPing to your invite."),
+        mime.create.text('calendar;method=REPLY', ical_file.to_ical()))
+
+    msg.headers['To'] = rsvp_to
+    msg.headers['Reply-To'] = account.email_address
+    msg.headers['From'] = account.email_address
+    msg.headers['Subject'] = "Nylas RSVP"
+
+    final_message = msg.to_string()
+    print final_message
+    sendmail_client._send([rsvp_to], final_message)
