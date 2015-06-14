@@ -218,8 +218,8 @@ def test_deleted_folder_on_fetch(monkeypatch, generic_client, constants):
         doesn't exist is converted into a FolderMissingError. (Yahoo style)
     """
     def raise_invalid_uid_exc(*args, **kwargs):
-        raise imapclient.IMAPClient.Error('[UNAVAILABLE] UID FETCH Server error '
-                                          'while fetching messages')
+        raise imapclient.IMAPClient.Error(
+            '[UNAVAILABLE] UID FETCH Server error while fetching messages')
 
     monkeypatch.setattr('imapclient.IMAPClient.fetch',
                         raise_invalid_uid_exc)
@@ -247,15 +247,14 @@ def test_gmail_folders(monkeypatch):
     # Should not contain the `\\Noselect' folder
     assert len(raw_folders) == len(folders) - 1
     for f in raw_folders:
-        if f.name in ['INBOX', '[Gmail]/All Mail', '[Gmail]/Trash']:
-            assert f.canonical_name in ['inbox', 'all', 'trash']
+        if f.name in ['INBOX', '[Gmail]/All Mail', '[Gmail]/Trash',
+                      '[Gmail]/Spam']:
+            assert f.canonical_name in ['inbox', 'all', 'trash', 'spam']
             assert f.category == f.canonical_name
         elif f.name in ['[Gmail]/Drafts', '[Gmail]/Important',
-                        '[Gmail]/Sent Mail', '[Gmail]/Spam',
-                        '[Gmail]/Starred']:
+                        '[Gmail]/Sent Mail', '[Gmail]/Starred']:
             assert f.canonical_name is None
-            assert f.category in ['drafts', 'important', 'sent', 'spam',
-                                  'starred']
+            assert f.category in ['drafts', 'important', 'sent', 'starred']
         else:
             assert f.name in ['reference']
             assert f.canonical_name is None

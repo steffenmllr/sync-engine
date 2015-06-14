@@ -1,9 +1,9 @@
 import datetime
 import itertools
 from hashlib import sha256
-from flanker import mime
 from collections import defaultdict
 
+from flanker import mime
 from sqlalchemy import (Column, Integer, BigInteger, String, DateTime,
                         Boolean, Enum, ForeignKey, Index)
 from sqlalchemy.dialects.mysql import LONGBLOB
@@ -47,7 +47,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     # Do delete messages if their associated thread is deleted.
     thread_id = Column(Integer, ForeignKey('thread.id', ondelete='CASCADE'),
                        nullable=False)
-
     thread = relationship(
         'Thread',
         backref=backref('messages', order_by='Message.received_date',
@@ -92,6 +91,12 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     decode_error = Column(Boolean, server_default=false(), nullable=False,
                           index=True)
 
+    # In accordance with JWZ (http://www.jwz.org/doc/threading.html)
+    references = Column(JSON, nullable=True)
+
+    # Only used for drafts.
+    version = Column(Integer, nullable=False, server_default='0')
+
     # only on messages from Gmail (TODO: use different table)
     #
     # X-GM-MSGID is guaranteed unique across an account but not globally
@@ -119,20 +124,17 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         """
         self.inbox_uid = '{}-{}'.format(self.public_id, self.version)
 
-    # In accordance with JWZ (http://www.jwz.org/doc/threading.html)
-    references = Column(JSON, nullable=True)
-
-    # Only used for drafts.
-    version = Column(Integer, nullable=False, server_default='0')
-
     categories = association_proxy(
         'messagecategories', 'category',
         creator=lambda category: MessageCategory(category=category))
 
     # FOR INBOX-CREATED MESSAGES:
+
     is_created = Column(Boolean, server_default=false(), nullable=False)
+
     # Whether this draft is a reply to an existing thread.
     is_reply = Column(Boolean)
+
     reply_to_message_id = Column(Integer, ForeignKey('message.id'),
                                  nullable=True)
     reply_to_message = relationship('Message', uselist=False)
@@ -347,8 +349,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         block.data = data
 
     def _mark_error(self):
-        """
-        Mark message as having encountered errors while parsing.
+        """ Mark message as having encountered errors while parsing.
 
         Message parsing can fail for several reasons. Occasionally iconv will
         fail via maximum recursion depth. EAS messages may be missing Date and
@@ -482,21 +483,23 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         return self.namespace.account
 
     def update_metadata(self, session, is_draft):
+        # TODO[k]: Set `is_draft`?
+
         if self.account.discriminator == 'easaccount':
             uids = self.easuids
         else:
             uids = self.imapuids
 
-        if not uids:
-            self.is_read = True
-            self.is_starred = False
-        else:
-            self.is_read = any(i.is_seen for i in uids)
-            self.is_starred = any(i.is_flagged for i in uids)
+        self.is_read = any(i.is_seen for i in uids)
+        self.is_starred = any(i.is_flagged for i in uids)
 
         categories = set()
         for i in uids:
             categories.update(i.categories)
+
+        if self.account.category_type == 'folder':
+            categories = select_category(categories)
+            assert len(categories) == 1
 
         self.categories = categories
 
@@ -525,12 +528,15 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 # 5.6 when columns are too long to be fully indexed with utf8mb4 collation.
 Index('ix_message_subject', Message.subject, mysql_length=191)
 Index('ix_message_data_sha256', Message.data_sha256, mysql_length=191)
+
 # For API querying performance.
 Index('ix_message_ns_id_is_draft_received_date', Message.namespace_id,
       Message.is_draft, Message.received_date)
+
 # For async deletion.
 Index('ix_message_namespace_id_deleted_at', Message.namespace_id,
       Message.deleted_at)
+
 # For statistics about messages sent via Nylas
 Index('ix_message_namespace_id_is_created', Message.namespace_id,
       Message.is_created)
@@ -560,3 +566,8 @@ class MessageCategory(MailSyncBase):
 
 Index('message_category_ids',
       MessageCategory.message_id, MessageCategory.category_id)
+
+
+def select_category(categories):
+    # TODO[k]: Implement proper ranking function
+    return list(categories)[0]

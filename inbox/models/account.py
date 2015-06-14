@@ -21,6 +21,17 @@ class Account(MailSyncBase, HasPublicID, HasEmailAddress, HasRunState):
         """
         A constant, unique lowercase identifier for the account provider
         (e.g., 'gmail', 'eas'). Subclasses should override this.
+
+        """
+        raise NotImplementedError
+
+    @property
+    def category_type(self):
+        """
+        Whether the account is organized by folders or labels
+        ('folder'/ 'label'), depending on the provider.
+        Subclasses should override this.
+
         """
         raise NotImplementedError
 

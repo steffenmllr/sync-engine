@@ -55,15 +55,15 @@ def test_gmail_folder_label_creation(empty_db):
     assert categories.count() == 8
     for c in categories.all():
         if c.name in ['all', 'inbox', 'trash']:
-            assert c._name in ['all', 'inbox', 'trash']
-            assert c.localized_name in ['All', 'INBOX', 'myTra$h']
+            assert c.name == c.category
+            assert c.display_name in ['All', 'INBOX', 'myTra$h']
         elif c.name in ['sent', 'junk']:
-            assert c._name in ['sent', 'junk']
-            assert c.localized_name in ['ma envoyes', 'icecreampop']
+            assert c.name == c.category
+            assert c.display_name in ['ma envoyes', 'icecreampop']
         else:
-            assert c.name in ['roundwego', 'carousel', 'circusfades']
-            assert c._name is None
-            assert c.localized_name in ['roundwego', 'carousel', 'circusfades']
+            assert c.name is None
+            assert c.category is None
+            assert c.display_name in ['roundwego', 'carousel', 'circusfades']
 
 
 def test_imap_folder_label_creation(empty_db):
@@ -112,12 +112,12 @@ def test_imap_folder_label_creation(empty_db):
     assert categories.count() == 7
     for c in categories.all():
         if c.name in ['inbox']:
-            assert c._name in ['inbox']
-            assert c.localized_name in ['INBOX']
+            assert c.name == c.category
+            assert c.display_name in ['INBOX']
         elif c.name in ['trash', 'sent', 'junk']:
-            assert c._name in ['trash', 'sent', 'junk']
-            assert c.localized_name in ['myTra$h', 'ma envoyes', 'icecreampop']
+            assert c.name == c.category
+            assert c.display_name in ['myTra$h', 'ma envoyes', 'icecreampop']
         else:
-            assert c.name in ['roundwego', 'carousel', 'circusfades']
-            assert c._name is None
-            assert c.localized_name in ['roundwego', 'carousel', 'circusfades']
+            assert c.name is None
+            assert c.category is None
+            assert c.display_name in ['roundwego', 'carousel', 'circusfades']

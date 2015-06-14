@@ -36,6 +36,8 @@ from inbox.util.misc import or_none, timed
 from inbox.basicauth import ValidationError
 from inbox.models.session import session_scope
 from inbox.models.account import Account
+from inbox.models.constants import (IMAP_CATEGORY_CANONICAL_MAP,
+                                    GMAIL_CATEGORY_CANONICAL_MAP)
 from inbox.log import get_logger
 log = get_logger()
 
@@ -224,7 +226,8 @@ retry_crispin = functools.partial(
 
 
 class CrispinClient(object):
-    """ Generic IMAP client wrapper.
+    """
+    Generic IMAP client wrapper.
 
     One thing to note about crispin clients is that *all* calls operate on
     the currently selected folder.
@@ -254,6 +257,7 @@ class CrispinClient(object):
         Open IMAP connection (should be already authed).
     readonly : bool
         Whether or not to open IMAP connections as readonly.
+
     """
     PROVIDER = 'IMAP'
     # NOTE: Be *careful* changing this! Downloading too much at once may
@@ -344,12 +348,50 @@ class CrispinClient(object):
         return or_none(self.selected_folder_info, lambda i: i['UIDVALIDITY'])
 
     def sync_folders(self):
+        """
+        List of folders to sync.
+
+        In generic IMAP, the 'INBOX' folder is required.
+
+        Returns
+        -------
+        list
+            Folders to sync (as strings).
+
+        """
         to_sync = []
-        for names in self.folder_names().itervalues():
+        have_folders = self.folder_names()
+
+        assert 'inbox' in have_folders, \
+            "Missing required 'inbox' folder for account_id: {}".\
+            format(self.account_id)
+
+        for names in have_folders.itervalues():
             to_sync.extend(names)
+
         return to_sync
 
     def folder_names(self, force_resync=False):
+        """
+        Return the folder names for the account as a mapping from
+        recognized folder_category: list of folder names in the category,
+        for example: 'sent': ['Sent Items', 'Sent'].
+
+        The list of recognized folder categories is in:
+        inbox/models/constants.py
+
+        Folders that do not belong to a recognized category are mapped to
+        None, for example: None: ['MyFolder', 'OtherFolder'].
+
+        The mapping is also cached in self._folder_names
+
+        Parameters:
+        -----------
+        force_resync: boolean
+            Return the cached mapping or return a refreshed mapping
+            (after refetching from the remote).
+
+        """
         if force_resync or self._folder_names is None:
             self._folder_names = defaultdict(list)
 
@@ -360,6 +402,14 @@ class CrispinClient(object):
         return self._folder_names
 
     def folders(self):
+        """
+        Fetch the list of folders for the account from the remote, return as a
+        list of RawFolder objects.
+
+        NOTE:
+        Always fetches the list of folders from the remote.
+
+        """
         raw_folders = []
 
         folders = self._fetch_folder_list()
@@ -377,6 +427,15 @@ class CrispinClient(object):
         return raw_folders
 
     def _process_folder(self, name, flags):
+        """
+        Determine the category and canonical_name for the remote folder from
+        its `name` and `flags`.
+
+        Returns
+        -------
+            RawFolder representing the folder
+
+        """
         # TODO[[k]: Important/ Starred for generic IMAP?
 
         # Different providers have different names for folders, here
@@ -405,7 +464,7 @@ class CrispinClient(object):
             for flag in flags:
                 category = flag_map.get(flag)
 
-        canonical_name = 'inbox' if category == 'inbox' else None
+        canonical_name = IMAP_CATEGORY_CANONICAL_MAP.get(category)
 
         return RawFolder(name=name, canonical_name=canonical_name,
                          category=category)
@@ -478,14 +537,14 @@ class CrispinClient(object):
 
         for uid in uid_set:
             try:
-                raw_messages.update(
-                    self.conn.fetch(uid, ['BODY.PEEK[] INTERNALDATE FLAGS']))
+                raw_messages.update(self.conn.fetch(
+                    uid, ['BODY.PEEK[] INTERNALDATE FLAGS']))
             except imapclient.IMAPClient.Error as e:
                 if ('[UNAVAILABLE] UID FETCH Server error '
                         'while fetching messages') in str(e):
-                    self.log.info('Got an exception while requesting an UID',
-                                  uid=uid, error=e,
-                                  logstash_tag='imap_download_exception')
+                    log.info('Got an exception while requesting an UID',
+                             uid=uid, error=e,
+                             logstash_tag='imap_download_exception')
                     continue
                 else:
                     log.info(('Got an unhandled exception while '
@@ -700,11 +759,9 @@ class GmailCrispinClient(CondStoreCrispinClient):
         """
         Gmail-specific list of folders to sync.
 
-        In Gmail, every message is a subset of All Mail, with the exception of
-        the Trash and Spam folders. So we only sync All Mail, Trash, Spam,
-        and Inbox (for quickly downloading initial inbox messages and
-        continuing to receive new Inbox messages while a large mail archive is
-        downloading).
+        In Gmail, every message is in `All Mail`, with the exception of
+        messages in the Trash and Spam folders. So we only sync the `All Mail`,
+        Trash and Spam folders.
 
         Returns
         -------
@@ -712,26 +769,31 @@ class GmailCrispinClient(CondStoreCrispinClient):
             Folders to sync (as strings).
 
         """
-        required_folders = {'all': 'All Mail', 'trash': 'Trash'}
+        missing, to_sync = [], []
         have_folders = self.folder_names()
 
-        missing_folders = []
-        # All Mail is required to sync all mail. Trash is required for deletes.
+        # The `All Mail` folder is the only folder /required/ for sync
+        required_folders = {'all': 'All Mail'}
         for folder in required_folders:
             if folder not in have_folders:
-                missing_folders.append(required_folders.get(folder))
-        if len(missing_folders) > 0:
+                missing.append(required_folders.get(folder))
+            to_sync.append(have_folders[folder][0])
+
+        if missing:
             raise GmailSettingError(
                 "Account {} ({}) is missing the {} folder(s). This is "
                 "probably due to 'Show in IMAP' being disabled. "
                 "Please enable at "
                 "https://mail.google.com/mail/#settings/labels"
                 .format(self.account_id, self.email_address,
-                        " and ".join(missing_folders)))
+                        " and ".join(missing)))
 
-        folders = [have_folders['all'][0], have_folders['trash'][0]]
+        # If the account has Trash, Spam folders, sync those too.
+        for folder in ['trash', 'spam']:
+            if folder in have_folders:
+                to_sync.append(have_folders[folder][0])
 
-        return folders
+        return to_sync
 
     def flags(self, uids):
         """
@@ -764,6 +826,26 @@ class GmailCrispinClient(CondStoreCrispinClient):
                 for uid, ret in data.items() if uid in uid_set}
 
     def folder_names(self, force_resync=False):
+        """
+        Return the folder names ( == label names for Gmail) for the account
+        as a mapping from recognized category: list of folder names in the
+        category, for example: 'sent': ['Sent Items', 'Sent'].
+
+        The list of recognized categories is in:
+        inbox/models/constants.py
+
+        Folders that do not belong to a recognized category are mapped to
+        None, for example: None: ['MyFolder', 'OtherFolder'].
+
+        The mapping is also cached in self._folder_names
+
+        Parameters:
+        -----------
+        force_resync: boolean
+            Return the cached mapping or return a refreshed mapping
+            (after refetching from the remote).
+
+        """
         if force_resync or self._folder_names is None:
             self._folder_names = defaultdict(list)
 
@@ -775,13 +857,11 @@ class GmailCrispinClient(CondStoreCrispinClient):
 
     def folders(self):
         """
-        Parses out Gmail-specific folder names based on Gmail IMAP flags.
+        Fetch the list of folders for the account from the remote, return as a
+        list of RawFolder objects.
 
-        If the user's account is localized to a different language, it will
-        return the proper localized string.
-
-        Caches the call since we use it all over the place and folders never
-        change names during a session.
+        NOTE:
+        Always fetches the list of folders from the remote.
 
         """
         raw_folders = []
@@ -800,6 +880,15 @@ class GmailCrispinClient(CondStoreCrispinClient):
         return raw_folders
 
     def _process_folder(self, name, flags):
+        """
+        Determine the category and canonical_name for the remote folder from
+        its `name` and `flags`.
+
+        Returns
+        -------
+            RawFolder representing the folder
+
+        """
         flag_map = {'\\Drafts': 'drafts', '\\Important': 'important',
                     '\\Sent': 'sent', '\\Junk': 'spam', '\\Flagged': 'starred',
                     '\\Trash': 'trash'}
@@ -814,8 +903,7 @@ class GmailCrispinClient(CondStoreCrispinClient):
                 if flag in flag_map:
                     category = flag_map[flag]
 
-        canonical_name = category if category in ['inbox', 'all', 'trash'] \
-            else None
+        canonical_name = GMAIL_CATEGORY_CANONICAL_MAP.get(category)
 
         return RawFolder(name=name, canonical_name=canonical_name,
                          category=category)

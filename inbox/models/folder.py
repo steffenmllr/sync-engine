@@ -74,8 +74,8 @@ class Folder(MailSyncBase):
             obj = cls(account=account, name=name,
                       canonical_name=canonical_name)
             obj.category = Category.find_or_create(
-                session, namespace_id=account.namespace.id, name=category,
-                localized_name=name)
+                session, namespace_id=account.namespace.id, category=category,
+                display_name=name)
             session.add(obj)
         except MultipleResultsFound:
             log.info('Duplicate folder rows for folder {} for account {}'

@@ -18,8 +18,8 @@ def format_address_list(addresses):
 def format_categories(categories):
     if categories is None:
         return []
-    return [{'name': category.name, 'id': category.public_id} for
-            category in categories]
+    return [{'id': category.public_id, 'name': category.name,
+             'display_name': category.display_name} for category in categories]
 
 
 def encode(obj, namespace_public_id=None, expand=False):
@@ -79,6 +79,7 @@ def encode(obj, namespace_public_id=None, expand=False):
             'email_address': obj.account.email_address,
             'name': obj.account.name,
             'provider': obj.account.provider,
+            'organization_unit': obj.account.category_type
             # 'status':  'syncing',  # TODO what are values here
             # 'last_sync':  1398790077,  # tuesday 4/29
             # 'scope': ['mail', 'contacts']
@@ -101,10 +102,15 @@ def encode(obj, namespace_public_id=None, expand=False):
             'body': obj.body,
             'unread': not obj.is_read,
             'starred': obj.is_starred,
-            'categories': format_categories(obj.categories),
             'files': obj.api_attachment_metadata,
             'events': [event.public_id for event in obj.events],
         }
+
+        categories = format_categories(obj.categories)
+        if obj.account.category_type == 'folder':
+            resp['folder'] = categories[0] if categories else None
+        else:
+            resp['labels'] = categories
 
         # If the message is a draft (Inbox-created or otherwise):
         if obj.is_draft:
@@ -114,6 +120,7 @@ def encode(obj, namespace_public_id=None, expand=False):
                 resp['reply_to_message_id'] = obj.reply_to_message.public_id
             else:
                 resp['reply_to_message_id'] = None
+
         return resp
 
     elif isinstance(obj, Thread):
@@ -126,11 +133,16 @@ def encode(obj, namespace_public_id=None, expand=False):
             'last_message_timestamp': obj.recentdate,
             'first_message_timestamp': obj.subjectdate,
             'snippet': obj.snippet,
-            'read': obj.read,
+            'unread': obj.unread,
             'starred': obj.starred,
-            'categories': format_categories(obj.categories),
             'version': obj.version
         }
+
+        categories = format_categories(obj.categories)
+        if obj.account.category_type == 'folder':
+            base['folders'] = categories
+        else:
+            base['labels'] = categories
 
         if not expand:
             base['message_ids'] = \
@@ -157,9 +169,13 @@ def encode(obj, namespace_public_id=None, expand=False):
                 'snippet': msg.snippet,
                 'unread': not msg.is_read,
                 'starred': msg.is_starred,
-                'categories': format_categories(msg.categories),
                 'files': msg.api_attachment_metadata
             }
+            categories = format_categories(obj.categories)
+            if obj.account.category_type == 'folder':
+                resp['folder'] = categories[0] if categories else None
+            else:
+                resp['labels'] = categories
 
             if msg.is_draft:
                 resp['object'] = 'draft'
@@ -250,11 +266,13 @@ def encode(obj, namespace_public_id=None, expand=False):
         return resp
 
     elif isinstance(obj, Category):
+        # 'object' is set to 'folder' or 'label'
         resp = {
             'id': obj.public_id,
-            'object': 'category',
+            'object': obj.type,
+            'namespace_id': _get_namespace_public_id(obj),
             'name': obj.name,
-            'namespace_id': _get_namespace_public_id(obj)
+            'display_name': obj.display_name
         }
         return resp
 

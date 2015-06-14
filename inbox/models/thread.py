@@ -120,6 +120,10 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
             self.starred = True
 
     @property
+    def account(self):
+        return self.namespace.account
+
+    @property
     def categories(self):
         categories = set()
         for m in self.messages:

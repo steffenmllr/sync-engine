@@ -343,6 +343,7 @@ def add_fake_message(db_session, namespace_id, thread=None, from_addr=None,
     m.received_date = received_date or datetime.utcnow()
     m.size = 0
     m.is_read = False
+    m.is_starred = False
     m.body = body
     m.snippet = snippet
     m.subject = subject
@@ -474,4 +475,6 @@ def new_message_from_synced(db, default_account, mime_message):
                                          received_date,
                                          mime_message.to_string())
     assert new_msg.received_date == received_date
+    new_msg.is_read = True
+    new_msg.is_starred = False
     return new_msg
