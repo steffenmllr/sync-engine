@@ -21,6 +21,7 @@ STATUS_MAP = {'NEEDS-ACTION': 'noreply',
               'ACCEPTED': 'yes',
               'DECLINED': 'no',
               'TENTATIVE': 'maybe'}
+INVERTED_STATUS_MAP = {value: key for key, value in STATUS_MAP.iteritems()}
 
 
 def events_from_ics(namespace, calendar, ics_str):
@@ -339,6 +340,9 @@ def import_attached_events(db_session, account, message):
 def _generate_individual_rsvp(message, status, account, ical_str):
     cal = iCalendar.from_ical(ical_str)
 
+    # It seems that Google Calendar requires us to copy a number of fields
+    # in the RVSP reply. I suppose it's for reconciling the reply with the
+    # invite. - karim
     uid = None
     organizer = None
     dtstamp = serialize_datetime(datetime.utcnow())
@@ -349,6 +353,7 @@ def _generate_individual_rsvp(message, status, account, ical_str):
     location = None
     summary = None
     transp = None
+    timezone = None
 
     number_of_vevent_sections = 0
     for component in cal.walk():
@@ -358,6 +363,9 @@ def _generate_individual_rsvp(message, status, account, ical_str):
             # Is this an invite? If not we can't RSVP to it.
             if calendar_method != 'REQUEST':
                 return None
+
+        if component.name == "VTIMEZONE":
+            timezone = component
 
         if component.name == "VEVENT":
             uid = str(component.get('uid'))
@@ -379,7 +387,10 @@ def _generate_individual_rsvp(message, status, account, ical_str):
 
     # Another one. In theory we shouldn't receive an invite with more
     # than one event.
-    assert number_of_vevent_sections < 2, "Calendar containing two events."
+    if number_of_vevent_sections > 1:
+        log.error('RSVP invite with more than two events',
+                  account_id=account.id, ical_str=ical_str)
+        assert number_of_vevent_sections < 2, "Calendar containing two events."
 
     if organizer is None or uid is None:
         return None
@@ -389,10 +400,17 @@ def _generate_individual_rsvp(message, status, account, ical_str):
     cal.add('METHOD', 'REPLY')
     cal.add('VERSION', '2.0')
     cal.add('CALSCALE', 'GREGORIAN')
+
+    if timezone is not None:
+        cal.add_component(timezone)
+
     event = icalendar.Event()
     event['uid'] = uid
     event['organizer'] = organizer
+
     event['sequence'] = 0
+    event['X-MICROSOFT-CDO-APPT-SEQUENCE'] = event['sequence']
+
     event['status'] = 'CONFIRMED'
     event['last-modified'] = dtstamp
     event['dtstamp'] = dtstamp
@@ -406,7 +424,7 @@ def _generate_individual_rsvp(message, status, account, ical_str):
 
     attendee = icalendar.vCalAddress('MAILTO:{}'.format(account.email_address))
     attendee.params['cn'] = account.name
-    attendee.params['partstat'] = 'ACCEPTED'
+    attendee.params['partstat'] = status
     event.add('attendee', attendee, encode=0)
     cal.add_component(event)
 
@@ -421,33 +439,47 @@ def _generate_individual_rsvp(message, status, account, ical_str):
     return ret
 
 
-def generate_rsvp(message, status, account):
+def generate_rsvp(message, data, account):
     # Generates an iCalendar file to RSVP to an invite.
+    status = INVERTED_STATUS_MAP.get(data["status"])
     for part in message.attached_event_files:
         # Note: we return as soon as we've found an iCalendar file because
         # most invite emails contain multiple copies of the same file, in the
         # body and as an attachment.
-        rsvp = _generate_individual_rsvp(message, status, account, part.block.data)
+        rsvp = _generate_individual_rsvp(message, status, account,
+                                         part.block.data)
         if rsvp is not None:
             return rsvp
 
 
-def send_rsvp(ical_data, account):
-    from inbox.sendmail.base import get_sendmail_client, SendMailException
+def send_rsvp(ical_data, event, body_text, account):
+    from inbox.sendmail.base import get_sendmail_client
     ical_file = ical_data["cal"]
     rsvp_to = ical_data["organizer_email"]
+    ical_txt = ical_file.to_ical()
 
     sendmail_client = get_sendmail_client(account)
 
-    msg = mime.create.multipart('alternative')
-    msg.append(
-        mime.create.text('plain', "Hello,\n\nI'm hereby RSVPing to your invite."),
-        mime.create.text('calendar;method=REPLY', ical_file.to_ical()))
+    msg = mime.create.multipart('mixed')
+
+    body = mime.create.multipart('alternative')
+    body.append(
+        mime.create.text('html', body_text),
+        mime.create.text('calendar;method=REPLY', ical_txt))
+
+    attachment = mime.create.attachment(
+                     'text/calendar',
+                     ical_txt,
+                     'invite.ics',
+                     disposition='attachment')
+
+    msg.append(body)
+    msg.append(attachment)
 
     msg.headers['To'] = rsvp_to
     msg.headers['Reply-To'] = account.email_address
     msg.headers['From'] = account.email_address
-    msg.headers['Subject'] = "Nylas RSVP"
+    msg.headers['Subject'] = 'RSVP to "{}"'.format(event.title)
 
     final_message = msg.to_string()
     sendmail_client._send([rsvp_to], final_message)

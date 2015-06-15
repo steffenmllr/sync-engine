@@ -23,6 +23,7 @@ def add_fake_msg_with_calendar_part(db_session, account, ics_str):
     )
     msg = Message.create_from_synced(
         account, 22, '[Gmail]/All Mail', datetime.utcnow(), parsed.to_string())
+    msg.from_addr = [('Ben Bitdiddle', 'ben@inboxapp.com')]
     msg.thread = add_fake_thread(db_session, account.namespace.id)
 
     assert msg.has_attached_events

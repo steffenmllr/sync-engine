@@ -28,7 +28,8 @@ from inbox.api.validation import (get_tags, get_attachments, get_calendar,
                                   validate_search_sort,
                                   valid_delta_object_types)
 import inbox.contacts.crud
-from inbox.sendmail.base import (create_draft, update_draft, delete_draft)
+from inbox.sendmail.base import (create_draft, update_draft, delete_draft,
+                                 SendMailException)
 from inbox.log import get_logger
 from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.models.action_log import schedule_action, ActionError
@@ -746,6 +747,7 @@ def event_delete_api(public_id):
 
 @app.route('/events/<public_id>/rsvp', methods=['POST'])
 def event_rsvp_api(public_id):
+    # This API uses a POST because we can't guarantee idempotency.
     valid_public_id(public_id)
     try:
         event = g.db_session.query(Event).filter(
@@ -754,7 +756,8 @@ def event_rsvp_api(public_id):
     except NoResultFound:
         raise NotFoundError("Couldn't find event {0}".format(public_id))
     if event.message is None:
-        raise InputError('This is not a message imported from an iCalendar invite.')
+        raise InputError('This is not a message imported '
+                         'from an iCalendar invite.')
 
     data = request.get_json(force=True)
 
@@ -774,8 +777,19 @@ def event_rsvp_api(public_id):
     if data['status'] not in ['yes', 'no', 'maybe']:
         raise InputError('Invalid status')
 
-    ical_data = generate_rsvp(event.message, data["status"], account)
-    send_rsvp(ical_data, account)
+    body_text = data.get('comment', 'I will come to our appointment.')
+    ical_data = generate_rsvp(event.message, data, account)
+
+    try:
+        send_rsvp(ical_data, event, body_text, account)
+    except SendMailException as exc:
+        kwargs = {}
+        if exc.failures:
+            kwargs['failures'] = exc.failures
+        if exc.server_error:
+            kwargs['server_error'] = exc.server_error
+        return err(exc.http_code, exc.message, **kwargs)
+
     return g.encoder.jsonify(None)
 
 
