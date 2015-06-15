@@ -274,11 +274,12 @@ def safer_yield_per(query, id_field, start_id, count):
     count: int
         The number of results to fetch at a time.
     """
+    cur_id = start_id
     while True:
-        results = query.filter(id_field >= start_id).order_by(id_field).\
+        results = query.filter(id_field >= cur_id).order_by(id_field).\
             limit(count).all()
         if not results:
             return
         for result in results:
             yield result
-        start_id = start_id + count
+        cur_id = results[-1].id + 1
