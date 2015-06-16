@@ -23,6 +23,10 @@ from inbox.search.mappings import NAMESPACE_INDEX_MAPPING
 # es_logger = logging.getLogger('elasticsearch')
 # es_logger.propagate = False
 
+INDEX_SETTINGS = {
+    "number_of_shards": 1
+}
+
 
 class Serializer(elasticsearch.serializer.JSONSerializer):
     """Override the Elasticsearch client's default serializer so that we
@@ -96,7 +100,10 @@ class NamespaceSearchEngine(object):
             self.log.info('create_index')
             self._connection.indices.create(
                 index=self.index_id,
-                body={'mappings': NAMESPACE_INDEX_MAPPING})
+                body={
+                    'mappings': NAMESPACE_INDEX_MAPPING,
+                    'settings': INDEX_SETTINGS}
+                )
         except elasticsearch.exceptions.RequestError:
             self.log.warning('create_index error, will re-configure.')
             # If the index already exists, ensure the right mappings are still
