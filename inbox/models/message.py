@@ -483,8 +483,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         return self.namespace.account
 
     def update_metadata(self, session, is_draft):
-        # TODO[k]: Set `is_draft`?
-
         if self.account.discriminator == 'easaccount':
             uids = self.easuids
         else:
@@ -492,6 +490,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 
         self.is_read = any(i.is_seen for i in uids)
         self.is_starred = any(i.is_flagged for i in uids)
+        self.is_draft = is_draft
 
         categories = set()
         for i in uids:

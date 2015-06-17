@@ -32,6 +32,7 @@ from inbox.log import get_logger
 from inbox.models import Message, Folder, Namespace, Account, Label
 from inbox.models.backends.gmail import GmailAccount
 from inbox.models.backends.imap import ImapFolderInfo, ImapUid, ImapThread
+from inbox.models.constants import MAX_LABEL_NAME_LENGTH
 from inbox.mailsync.backends.base import (mailsync_session_scope,
                                           THROTTLE_WAIT)
 from inbox.mailsync.backends.imap.generic import UIDStack, safe_download
@@ -75,11 +76,13 @@ class GmailSyncMonitor(ImapSyncMonitor):
 
         canonical_folders, labels = [], []
         for f in raw_folders:
-            canonical_folders.append(f.canonical_name) if f.canonical_name \
-                else labels.append(f.name)
+            if f.canonical_name:
+                canonical_folders.append(f.canonical_name)
+            else:
+                labels.append(f.display_name.rstrip()[:MAX_LABEL_NAME_LENGTH])
 
-        assert 'inbox' in canonical_folders and 'all' in canonical_folders, \
-            'Account {} has no detected `inbox`/ `all` folder; folders: {}'.\
+        assert 'all' in canonical_folders, \
+            'Account {} has no detected folder; folders: {}'.\
             format(account.email_address, canonical_folders)
 
         local_labels = {l.name: l for l in db_session.query(Label).filter(
@@ -88,7 +91,7 @@ class GmailSyncMonitor(ImapSyncMonitor):
 
         # Delete labels no longer present on the remote.
         # Note that canonical folders cannot be deleted.
-        discard = set(local_labels.iterkeys()) - set(labels)
+        discard = set(local_labels) - set(labels)
         for name in discard:
             log.info('Label deleted from remote',
                      account_id=account_id, name=name)
@@ -96,22 +99,21 @@ class GmailSyncMonitor(ImapSyncMonitor):
 
         # Create new Folders, Labels
         for raw_folder in raw_folders:
-            name, canonical_name, category = \
-                raw_folder.name, raw_folder.canonical_name, raw_folder.category
+            Label.find_or_create(db_session, account,
+                                 raw_folder.display_name,
+                                 raw_folder.canonical_name)
 
-            label = Label.find_or_create(db_session, account, name,
-                                         canonical_name, category)
-
-            if canonical_name:
-                folder = Folder.find_or_create(db_session, account, name,
-                                               canonical_name, category)
-                if folder.name != name:
-                    log.warn('Canonical folder name changed on remote',
+            if raw_folder.canonical_name in ('all', 'spam', 'trash'):
+                folder = Folder.find_or_create(db_session, account,
+                                               raw_folder.display_name,
+                                               raw_folder.canonical_name)
+                if folder.name != raw_folder.display_name:
+                    log.info('Canonical folder name changed on remote',
                              account_id=account_id,
-                             canonical_name=canonical_name,
-                             new_name=name, name=folder.name)
-                folder.name = name
-                label.name = name
+                             canonical_name=raw_folder.canonical_name,
+                             new_name=raw_folder.display_name,
+                             name=folder.name)
+                    folder.name = raw_folder.display_name
 
         db_session.commit()
 
@@ -478,9 +480,8 @@ def add_new_imapuids(crispin_client, remote_g_metadata, syncmanager_lock,
                     for uid in new_imapuids:
                         # Skip uids which have disappeared in the meantime
                         if uid.msg_uid in flags:
-                            uid.update_flags_and_labels(
-                                flags[uid.msg_uid].flags,
-                                flags[uid.msg_uid].labels)
+                            uid.update_flags(flags[uid.msg_uid].flags)
+                            uid.update_labels(flags[uid.msg_uid].labels)
 
                             common.update_message_thread_metadata(session, uid)
 

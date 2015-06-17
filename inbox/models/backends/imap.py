@@ -105,7 +105,7 @@ class ImapUid(MailSyncBase):
     # TO BE DEPRECATED
     g_labels = Column(JSON, default=lambda: [], nullable=True)
 
-    def update_flags_and_labels(self, new_flags, x_gm_labels=None):
+    def update_flags(self, new_flags):
         """
         Sets flag and g_labels values based on the new_flags and x_gm_labels
         parameters. Returns True if any values have changed compared to what we
@@ -132,37 +132,58 @@ class ImapUid(MailSyncBase):
         if extra_flags != self.extra_flags:
             changed = True
         self.extra_flags = extra_flags
-
-        if x_gm_labels is not None:
-            new_labels = sorted(x_gm_labels)
-
-            if new_labels != self.g_labels:
-                changed = True
-                self.update_labels(new_labels)
-
-            self.g_labels = new_labels
-
-            # Gmail doesn't use the \Draft flag. Go figure.
-            if '\\Draft' in x_gm_labels:
-                if not self.is_draft:
-                    changed = True
-                self.is_draft = True
-
         return changed
 
     def update_labels(self, new_labels):
-        local_labels = [l.name for l in self.labels]
+        # TODO(emfree): This is all mad complicated. Simplify if possible?
+        # Gmail IMAP doesn't use the normal IMAP \\Draft flag. Silly Gmail
+        # IMAP.
+        self.is_draft = '\\Draft' in new_labels
+
+        special_label_map = {
+            '\\Starred': 'starred',
+            '\\Inbox': 'inbox',
+            '\\Draft': 'draft',
+            '\\Important': 'important',
+            '\\Sent': 'sent'
+        }
+        remote_special_labels = set()
+        remote_normal_labels = set()
+        for name in new_labels:
+            if name in special_label_map:
+                remote_special_labels.add(special_label_map[name])
+            else:
+                remote_normal_labels.add(name)
+
+        local_special_labels = {l for l in self.labels if l.canonical_name in
+                                special_label_map.values()}
+        local_normal_labels = {l.name for l in self.labels if l.canonical_name
+                               not in special_label_map.values()}
+
         with object_session(self).no_autoflush as session:
-            add = set(new_labels) - set(local_labels)
-            for name in add:
+            new_normal = remote_normal_labels - local_normal_labels
+            removed_normal = local_normal_labels - remote_normal_labels
+            for name in new_normal:
                 label = Label.find_or_create(session, self.account, name)
                 self.labels.add(label)
 
-            remove = set(local_labels) - set(new_labels)
-            if remove:
+            if removed_normal:
                 for label in session.query(Label).filter(
                         Label.account_id == self.account.id,
-                        Label.name.in_(remove)).all():
+                        Label.name.in_(removed_normal)).all():
+                    self.labels.remove(label)
+
+            new_special = remote_special_labels - local_special_labels
+            removed_special = local_special_labels - remote_special_labels
+            for canonical_name in new_special:
+                label = Label.find_or_create(session, self.account,
+                                             canonical_name, canonical_name)
+                self.labels.add(label)
+
+            if removed_special:
+                for label in session.query(Label).filter(
+                        Label.account_id == self.account.id,
+                        Label.canonical_name.in_(removed_special)).all():
                     self.labels.remove(label)
 
     @property

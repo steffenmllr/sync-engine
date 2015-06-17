@@ -1,14 +1,12 @@
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy.sql.expression import false
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 from inbox.models.base import MailSyncBase
 from inbox.models.mixins import HasRevisions
-from inbox.models.constants import (MAX_INDEXABLE_LENGTH, CATEGORY_NAMES,
-                                    RESERVED_NAMES)
+from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.sqlalchemy_ext.util import generate_public_id
 from inbox.log import get_logger
 log = get_logger()
@@ -33,50 +31,25 @@ class Category(MailSyncBase, HasRevisions):
     public_id = Column(String(MAX_INDEXABLE_LENGTH), nullable=False,
                        default=generate_public_id)
 
-    category = Column(String(MAX_INDEXABLE_LENGTH, collation='utf8mb4_bin'),
-                      nullable=True)
-    display_name = Column(String(MAX_INDEXABLE_LENGTH), nullable=False)
-
-    user_created = Column(Boolean, server_default=false(), nullable=False)
-
-    @property
-    def user_removable(self):
-        return self.user_created
-
-    @property
-    def user_addable(self):
-        return self.user_created
+    name = Column(String(MAX_INDEXABLE_LENGTH), nullable=True)
+    display_name = Column(String(MAX_INDEXABLE_LENGTH,
+                                 collation='utf8mb4_bin'), nullable=False)
 
     @classmethod
-    def name_available(cls, name, account_id, db_session):
-        name = name.lower()
-
-        if name in CATEGORY_NAMES or name in RESERVED_NAMES:
-            return False
-
-        if (name,) in db_session.query(cls.display_name).filter(
-                cls.account_id == account_id).all():
-            return False
-
-        return True
-
-    @classmethod
-    def find_or_create(cls, session, namespace_id, category, display_name,
-                       user_created=False):
-
+    def find_or_create(cls, session, namespace_id, name, display_name):
         try:
             obj = session.query(cls).filter(
                 cls.namespace_id == namespace_id,
-                cls.category == category,
+                cls.name == name,
                 cls.display_name == display_name).one()
         except NoResultFound:
-            obj = cls(namespace_id=namespace_id, category=category,
-                      display_name=display_name, user_created=user_created)
+            obj = cls(namespace_id=namespace_id, name=name,
+                      display_name=display_name)
             session.add(obj)
         except MultipleResultsFound:
             log.error('Duplicate category rows for namespace_id {}, '
-                      'category_name {}, display_name: {}'.
-                      format(namespace_id, category, display_name))
+                      'name {}, display_name: {}'.
+                      format(namespace_id, name, display_name))
             raise
 
         return obj
@@ -86,12 +59,8 @@ class Category(MailSyncBase, HasRevisions):
         return self.namespace.account
 
     @property
-    def name(self):
-        return self.category
-
-    @property
     def type(self):
         return self.account.category_type
 
-    __table_args__ = (UniqueConstraint('namespace_id', 'category'),
+    __table_args__ = (UniqueConstraint('namespace_id', 'name', 'display_name'),
                       UniqueConstraint('namespace_id', 'public_id'))

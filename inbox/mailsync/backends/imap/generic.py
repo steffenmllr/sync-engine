@@ -365,8 +365,7 @@ class FolderSyncEngine(Greenlet):
                                       message_id=message.id,
                                       account_id=self.account_id,
                                       folder_id=self.folder_id)
-                        uid.update_flags_and_labels(raw_message.flags,
-                                                    raw_message.g_labels)
+                        uid.update_flags(raw_message.flags)
                         db_session.add(uid)
 
                         # Update the existing message + thread's metadata too

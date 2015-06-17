@@ -36,8 +36,6 @@ from inbox.util.misc import or_none, timed
 from inbox.basicauth import ValidationError
 from inbox.models.session import session_scope
 from inbox.models.account import Account
-from inbox.models.constants import (IMAP_CATEGORY_CANONICAL_MAP,
-                                    GMAIL_CATEGORY_CANONICAL_MAP)
 from inbox.log import get_logger
 log = get_logger()
 
@@ -51,9 +49,7 @@ GMetadata = namedtuple('GMetadata', 'msgid thrid')
 RawMessage = namedtuple(
     'RawImapMessage',
     'uid internaldate flags body g_thrid g_msgid g_labels')
-RawFolder = namedtuple(
-    'RawFolder',
-    'name canonical_name category')
+RawFolder = namedtuple('RawFolder', 'display_name canonical_name')
 
 # Lazily-initialized map of account ids to lock objects.
 # This prevents multiple greenlets from concurrently creating duplicate
@@ -293,9 +289,7 @@ class CrispinClient(object):
         IMAPClient parses this response into a list of
         (flags, delimiter, name) tuples.
         """
-        folders = self.conn.list_folders()
-
-        return folders
+        return self.conn.list_folders()
 
     def select_folder(self, folder, uidvalidity_cb):
         """ Selects a given folder.
@@ -397,7 +391,7 @@ class CrispinClient(object):
 
             raw_folders = self.folders()
             for f in raw_folders:
-                self._folder_names[f.category].append(f.name)
+                self._folder_names[f.canonical_name].append(f.display_name)
 
         return self._folder_names
 
@@ -419,14 +413,12 @@ class CrispinClient(object):
                 # Special folders that can't contain messages
                 continue
 
-            # TODO: Internationalization support
-
             raw_folder = self._process_folder(name, flags)
             raw_folders.append(raw_folder)
 
         return raw_folders
 
-    def _process_folder(self, name, flags):
+    def _process_folder(self, display_name, flags):
         """
         Determine the category and canonical_name for the remote folder from
         its `name` and `flags`.
@@ -441,10 +433,15 @@ class CrispinClient(object):
         # Different providers have different names for folders, here
         # we have a default map for common name mapping, additional
         # mappings can be provided via the provider configuration file
-        default_folder_map = {'INBOX': 'inbox', 'DRAFTS': 'drafts',
-                              'DRAFT': 'drafts', 'JUNK': 'spam',
-                              'ARCHIVE': 'archive', 'SENT': 'sent',
-                              'TRASH': 'trash', 'SPAM': 'spam'}
+        default_folder_map = {
+            'inbox': 'inbox',
+            'drafts': 'drafts',
+            'draft': 'drafts',
+            'junk': 'spam',
+            'spam': 'spam',
+            'archive': 'archive',
+            'sent': 'sent',
+            'trash': 'trash'}
 
         # Additionally we provide a custom mapping for providers that
         # don't fit into the defaults.
@@ -455,19 +452,17 @@ class CrispinClient(object):
         flag_map = {'\\Trash': 'trash', '\\Sent': 'sent', '\\Drafts': 'drafts',
                     '\\Junk': 'spam', '\\Inbox': 'inbox', '\\Spam': 'spam'}
 
-        category = default_folder_map.get(name.upper())
+        canonical_name = default_folder_map.get(display_name.lower())
 
-        if not category:
-            category = folder_map.get(name)
+        if not canonical_name:
+            canonical_name = folder_map.get(display_name)
 
-        if not category:
+        if not canonical_name:
             for flag in flags:
-                category = flag_map.get(flag)
+                canonical_name = flag_map.get(flag)
 
-        canonical_name = IMAP_CATEGORY_CANONICAL_MAP.get(category)
-
-        return RawFolder(name=name, canonical_name=canonical_name,
-                         category=category)
+        return RawFolder(display_name=display_name,
+                         canonical_name=canonical_name)
 
     def folder_status(self, folder):
         status = [long(val) for val in self.conn.folder_status(
@@ -851,7 +846,7 @@ class GmailCrispinClient(CondStoreCrispinClient):
 
             raw_folders = self.folders()
             for f in raw_folders:
-                self._folder_names[f.category].append(f.name)
+                self._folder_names[f.canonical_name].append(f.display_name)
 
         return self._folder_names
 
@@ -879,10 +874,10 @@ class GmailCrispinClient(CondStoreCrispinClient):
 
         return raw_folders
 
-    def _process_folder(self, name, flags):
+    def _process_folder(self, display_name, flags):
         """
-        Determine the category and canonical_name for the remote folder from
-        its `name` and `flags`.
+        Determine the canonical_name for the remote folder from its `name` and
+        `flags`.
 
         Returns
         -------
@@ -893,20 +888,18 @@ class GmailCrispinClient(CondStoreCrispinClient):
                     '\\Sent': 'sent', '\\Junk': 'spam', '\\Flagged': 'starred',
                     '\\Trash': 'trash'}
 
-        category = None
+        canonical_name = None
         if '\\All' in flags:
-            category = 'all'
-        elif name.lower() == 'inbox':
-            category = 'inbox'
+            canonical_name = 'all'
+        elif display_name.lower() == 'inbox':
+            canonical_name = 'inbox'
         else:
             for flag in flags:
                 if flag in flag_map:
-                    category = flag_map[flag]
+                    canonical_name = flag_map[flag]
 
-        canonical_name = GMAIL_CATEGORY_CANONICAL_MAP.get(category)
-
-        return RawFolder(name=name, canonical_name=canonical_name,
-                         category=category)
+        return RawFolder(display_name=display_name,
+                         canonical_name=canonical_name)
 
     def uids(self, uids):
         raw_messages = self.conn.fetch(uids, ['BODY.PEEK[] INTERNALDATE FLAGS',

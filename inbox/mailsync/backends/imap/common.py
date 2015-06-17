@@ -57,7 +57,11 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
         flags = new_flags[item.msg_uid].flags
         labels = getattr(new_flags[item.msg_uid], 'labels', None)
 
-        changed = item.update_flags_and_labels(flags, labels)
+        # STOPSHIP(emfree) refactor
+        changed = item.update_flags(flags)
+        if labels is not None:
+            item.update_labels(labels)
+            changed = True
 
         if not changed:
             continue
@@ -155,7 +159,9 @@ def create_imap_message(db_session, log, account, folder, msg):
 
     imapuid = ImapUid(account=account, folder=folder, msg_uid=msg.uid,
                       message=new_message)
-    imapuid.update_flags_and_labels(msg.flags, msg.g_labels)
+    imapuid.update_flags(msg.flags)
+    if msg.g_labels is not None:
+        imapuid.update_labels(msg.g_labels)
 
     # Update the message's metadata
     with db_session.no_autoflush:

@@ -106,43 +106,27 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
 
         """
         account = db_session.query(Account).get(account_id)
+        remote_folder_names = {f.display_name for f in raw_folders}
 
-        canonical_folders, folders = [], []
-        for f in raw_folders:
-            canonical_folders.append(f.canonical_name) if f.canonical_name \
-                else folders.append(f.name)
-
-        assert 'inbox' in canonical_folders, \
-            'Account {} has no detected inbox folder'.\
+        assert 'inbox' in {f.canonical_name for f in raw_folders}, \
+            'Account {} has no detected inbox folder'. \
             format(account.email_address)
 
         local_folders = {f.name: f for f in db_session.query(Folder).filter(
-                         Folder.account_id == account_id,
-                         Folder.canonical_name.is_(None))}
+                         Folder.account_id == account_id)}
 
         # Delete folders no longer present on the remote.
         # Note that canonical folders cannot be deleted.
-        discard = set(local_folders.iterkeys()) - set(folders)
+        discard = set(local_folders) - remote_folder_names
         for name in discard:
             log.info('Folder deleted from remote', account_id=account_id,
                      name=name)
             db_session.delete(local_folders[name])
 
-        # Create new Folders
+        # Create new folders
         for raw_folder in raw_folders:
-            name, canonical_name, category = \
-                raw_folder.name, raw_folder.canonical_name, raw_folder.category
-
-            folder = Folder.find_or_create(db_session, account, name,
-                                           canonical_name, category)
-
-            if canonical_name:
-                if folder.name != name:
-                    log.warn('Canonical folder name changed on remote',
-                             account_id=account_id,
-                             canonical_name=canonical_name,
-                             new_name=name, name=folder.name)
-                folder.name = name
+            Folder.find_or_create(db_session, account, raw_folder.display_name,
+                                  raw_folder.canonical_name)
 
         db_session.commit()
 

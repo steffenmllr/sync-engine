@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.schema import UniqueConstraint
-from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
+from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.models.base import MailSyncBase
 from inbox.models.category import Category
@@ -41,8 +41,7 @@ class Label(MailSyncBase):
                         cascade='all, delete-orphan'))
 
     @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None,
-                       category=None):
+    def find_or_create(cls, session, account, name, canonical_name=None):
         q = session.query(cls).filter(cls.account_id == account.id)
 
         if canonical_name is not None:
@@ -59,22 +58,15 @@ class Label(MailSyncBase):
                 name = name[:MAX_LABEL_NAME_LENGTH]
 
             q = q.filter_by(name=name)
-
         try:
-            obj = session.query(cls).filter(
-                cls.account_id == account.id, cls.name == name,
-                cls.canonical_name == canonical_name).one()
+            obj = q.one()
         except NoResultFound:
             obj = cls(account_id=account.id, name=name,
                       canonical_name=canonical_name)
             obj.category = Category.find_or_create(
-                session, namespace_id=account.namespace.id, category=category,
-                display_name=name)
+                session, namespace_id=account.namespace.id,
+                name=canonical_name, display_name=name)
             session.add(obj)
-        except MultipleResultsFound:
-            log.error('Duplicate label rows for name {}, account_id {}'
-                      .format(name, account.id))
-            raise
 
         return obj
 

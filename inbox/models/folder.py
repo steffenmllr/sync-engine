@@ -38,10 +38,6 @@ class Folder(MailSyncBase):
     name = Column(String(MAX_FOLDER_NAME_LENGTH, collation='utf8mb4_bin'),
                   nullable=False)
     canonical_name = Column(String(MAX_FOLDER_NAME_LENGTH), nullable=True)
-    # We use an additional identifier for certain providers,
-    # for e.g. EAS uses it to store the eas_folder_id
-    # DEPRECATED
-    identifier = Column(String(MAX_FOLDER_NAME_LENGTH), nullable=True)
 
     # TODO[k]: What if Category deleted via API?
     # Should we allow a delete-cascade here?
@@ -52,8 +48,7 @@ class Folder(MailSyncBase):
                         cascade='all, delete-orphan'))
 
     @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None,
-                       category=None):
+    def find_or_create(cls, session, account, name, canonical_name=None):
         q = session.query(cls).filter(cls.account_id == account.id)
 
         if canonical_name is not None:
@@ -74,8 +69,8 @@ class Folder(MailSyncBase):
             obj = cls(account=account, name=name,
                       canonical_name=canonical_name)
             obj.category = Category.find_or_create(
-                session, namespace_id=account.namespace.id, category=category,
-                display_name=name)
+                session, namespace_id=account.namespace.id,
+                name=canonical_name, display_name=name)
             session.add(obj)
         except MultipleResultsFound:
             log.info('Duplicate folder rows for folder {} for account {}'
