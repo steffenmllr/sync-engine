@@ -22,8 +22,8 @@ from inbox.api.validation import (get_tags, get_attachments, get_calendar,
                                   get_recipients, get_draft, valid_public_id,
                                   valid_event, valid_event_update, timestamp,
                                   bounded_str, view, strict_parse_args,
-                                  limit, ValidatableArgument, strict_bool,
-                                  validate_draft_recipients,
+                                  limit, offset, ValidatableArgument,
+                                  strict_bool, validate_draft_recipients,
                                   validate_search_query,
                                   validate_search_sort,
                                   valid_delta_object_types)
@@ -93,7 +93,7 @@ def start():
     g.parser = reqparse.RequestParser(argument_class=ValidatableArgument)
     g.parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
                           location='args')
-    g.parser.add_argument('offset', default=0, type=int, location='args')
+    g.parser.add_argument('offset', default=0, type=offset, location='args')
 
 
 @app.after_request
@@ -717,8 +717,10 @@ def event_update_api(public_id):
             setattr(event, attr, data[attr])
 
     g.db_session.commit()
+
     schedule_action('update_event', event, g.namespace.id, g.db_session,
                     calendar_uid=event.calendar.uid)
+
     return g.encoder.jsonify(event)
 
 
@@ -732,14 +734,19 @@ def event_delete_api(public_id):
     except NoResultFound:
         raise NotFoundError("Couldn't find event {0}".format(public_id))
     if event.calendar.read_only:
-        raise InputError('Cannot delete event {} from read_only '
-                         'calendar.'.format(public_id))
+        raise InputError('Cannot delete event {} from read_only calendar.'.
+                         format(public_id))
+
+    # Set the local event status to 'cancelled' rather than deleting it,
+    # in order to be consistent with how we sync deleted events from the
+    # remote, and consequently return them through the events, delta sync APIs
+    event.status = 'cancelled'
+    g.db_session.commit()
 
     schedule_action('delete_event', event, g.namespace.id, g.db_session,
                     event_uid=event.uid, calendar_name=event.calendar.name,
                     calendar_uid=event.calendar.uid)
-    g.db_session.delete(event)
-    g.db_session.commit()
+
     return g.encoder.jsonify(None)
 
 
