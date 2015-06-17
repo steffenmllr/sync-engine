@@ -136,14 +136,14 @@ class ImapUid(MailSyncBase):
 
     def update_labels(self, new_labels):
         # TODO(emfree): This is all mad complicated. Simplify if possible?
+
         # Gmail IMAP doesn't use the normal IMAP \\Draft flag. Silly Gmail
         # IMAP.
         self.is_draft = '\\Draft' in new_labels
+        self.is_starred = '\\Starred' in new_labels
 
         special_label_map = {
-            '\\Starred': 'starred',
             '\\Inbox': 'inbox',
-            '\\Draft': 'draft',
             '\\Important': 'important',
             '\\Sent': 'sent'
         }
@@ -152,7 +152,7 @@ class ImapUid(MailSyncBase):
         for name in new_labels:
             if name in special_label_map:
                 remote_special_labels.add(special_label_map[name])
-            else:
+            elif name not in ('\\Draft', '\\Starred'):
                 remote_normal_labels.add(name)
 
         local_special_labels = {l.canonical_name for l in self.labels if

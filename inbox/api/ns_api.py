@@ -16,6 +16,7 @@ from inbox.models.session import session_scope
 from inbox.models import (Message, Block, Part, Thread, Namespace,
                           Contact, Calendar, Event, Transaction)
 from inbox.api.sending import send_draft
+from inbox.api.update import update_message
 from inbox.api.kellogs import APIEncoder
 from inbox.api import filtering
 from inbox.api.validation import (get_attachments, get_calendar,
@@ -30,13 +31,11 @@ from inbox.api.validation import (get_attachments, get_calendar,
 import inbox.contacts.crud
 from inbox.sendmail.base import (create_draft, update_draft, delete_draft)
 from inbox.log import get_logger
-from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.models.action_log import schedule_action, ActionError
 from inbox.models.session import InboxSession
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
-from inbox.api.err import (err, APIException, NotFoundError, InputError,
-                           ConflictError)
+from inbox.api.err import (err, APIException, NotFoundError, InputError)
 from inbox.ignition import main_engine
 engine = main_engine()
 
@@ -304,7 +303,7 @@ def message_search_api():
     return g.encoder.jsonify(results)
 
 
-@app.route('/messages/<public_id>', methods=['GET', 'PUT'])
+@app.route('/messages/<public_id>', methods=['GET'])
 def message_api(public_id):
     try:
         valid_public_id(public_id)
@@ -313,13 +312,24 @@ def message_api(public_id):
             Message.namespace_id == g.namespace.id).one()
     except NoResultFound:
         raise NotFoundError("Couldn't find message {0} ".format(public_id))
-    if request.method == 'GET':
-        if request.headers.get('Accept', None) == 'message/rfc822':
-            return Response(message.full_body.data, mimetype='message/rfc822')
-        return g.encoder.jsonify(message)
-    elif request.method == 'PUT':
-        # STOPSHIP(emfree): implement
-        return g.encoder.jsonify(message)
+    if request.headers.get('Accept', None) == 'message/rfc822':
+        return Response(message.full_body.data, mimetype='message/rfc822')
+    return g.encoder.jsonify(message)
+
+
+@app.route('/messages/<public_id>', methods=['PUT'])
+def message_update_api(public_id):
+    try:
+        valid_public_id(public_id)
+        message = g.db_session.query(Message).filter(
+            Message.public_id == public_id,
+            Message.namespace_id == g.namespace.id).one()
+    except NoResultFound:
+        raise NotFoundError("Couldn't find message {0} ".format(public_id))
+
+    data = request.get_json(force=True)
+    update_message(message, data, g.db_session)
+    return g.encoder.jsonify(message)
 
 
 # TODO Deprecate this endpoint once API usage falls off
