@@ -52,8 +52,7 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
     for item in session.query(ImapUid).filter(
             ImapUid.account_id == account_id,
             ImapUid.msg_uid.in_(uids),
-            ImapUid.folder_id == folder_id).\
-            options(joinedload(ImapUid.message)):
+            ImapUid.folder_id == folder_id):
         flags = new_flags[item.msg_uid].flags
         labels = getattr(new_flags[item.msg_uid], 'labels', None)
 
@@ -63,10 +62,8 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
             item.update_labels(labels)
             changed = True
 
-        if not changed:
-            continue
-
-        update_message_thread_metadata(session, item)
+        if changed:
+            update_message_thread_metadata(session, item)
 
 
 def remove_deleted_uids(account_id, session, uids, folder_id):
