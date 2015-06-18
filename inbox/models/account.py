@@ -10,7 +10,6 @@ from inbox.util.file import Lock
 
 from inbox.models.mixins import HasPublicID, HasEmailAddress, HasRunState
 from inbox.models.base import MailSyncBase
-from inbox.models.folder import Folder
 from inbox.models.calendar import Calendar
 from inbox.providers import provider_info
 
@@ -65,63 +64,6 @@ class Account(MailSyncBase, HasPublicID, HasEmailAddress, HasRunState):
 
     last_synced_contacts = Column(DateTime, nullable=True)
     last_synced_events = Column(DateTime, nullable=True)
-
-    # Folder mappings for the data we sync back to the account backend.  All
-    # account backends will not provide all of these. This may mean that Inbox
-    # creates some folders on the remote backend, for example to provide
-    # "archive" functionality on non-Gmail remotes.
-    inbox_folder_id = Column(Integer,
-                             ForeignKey(Folder.id, ondelete='SET NULL'),
-                             nullable=True)
-    inbox_folder = relationship('Folder', post_update=True,
-                                foreign_keys=[inbox_folder_id])
-    sent_folder_id = Column(Integer,
-                            ForeignKey(Folder.id, ondelete='SET NULL'),
-                            nullable=True)
-    sent_folder = relationship('Folder', post_update=True,
-                               foreign_keys=[sent_folder_id])
-
-    drafts_folder_id = Column(Integer,
-                              ForeignKey(Folder.id, ondelete='SET NULL'),
-                              nullable=True)
-    drafts_folder = relationship('Folder', post_update=True,
-                                 foreign_keys=[drafts_folder_id])
-
-    spam_folder_id = Column(Integer,
-                            ForeignKey(Folder.id, ondelete='SET NULL'),
-                            nullable=True)
-    spam_folder = relationship('Folder', post_update=True,
-                               foreign_keys=[spam_folder_id])
-
-    trash_folder_id = Column(Integer,
-                             ForeignKey(Folder.id, ondelete='SET NULL'),
-                             nullable=True)
-    trash_folder = relationship('Folder', post_update=True,
-                                foreign_keys=[trash_folder_id])
-
-    archive_folder_id = Column(Integer,
-                               ForeignKey(Folder.id, ondelete='SET NULL'),
-                               nullable=True)
-    archive_folder = relationship('Folder', post_update=True,
-                                  foreign_keys=[archive_folder_id])
-
-    all_folder_id = Column(Integer,
-                           ForeignKey(Folder.id, ondelete='SET NULL'),
-                           nullable=True)
-    all_folder = relationship('Folder', post_update=True,
-                              foreign_keys=[all_folder_id])
-
-    starred_folder_id = Column(Integer,
-                               ForeignKey(Folder.id, ondelete='SET NULL'),
-                               nullable=True)
-    starred_folder = relationship('Folder', post_update=True,
-                                  foreign_keys=[starred_folder_id])
-
-    important_folder_id = Column(Integer,
-                                 ForeignKey(Folder.id, ondelete='SET NULL'),
-                                 nullable=True)
-    important_folder = relationship('Folder', post_update=True,
-                                    foreign_keys=[important_folder_id])
 
     emailed_events_calendar_id = Column(Integer,
                                         ForeignKey('calendar.id',

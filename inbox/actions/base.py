@@ -105,12 +105,6 @@ def save_draft(account_id, message_id, db_session, args):
         log.warning('tried to save outdated version of draft')
         return
 
-    if account.drafts_folder is None:
-        # account has no detected drafts folder - create one.
-        drafts_folder = Folder.find_or_create(db_session, account, 'Drafts',
-                                              'drafts')
-        account.drafts_folder = drafts_folder
-
     mimemsg = _create_email(account, message)
     remote_save_draft = module_registry[account.provider].remote_save_draft
     remote_save_draft(account, mimemsg, db_session, message.created_at)
