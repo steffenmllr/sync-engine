@@ -11,7 +11,6 @@ Eventually we're going to want a better way of ACLing functions that operate on
 accounts.
 
 """
-from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.contacts.process_mail import update_contacts_from_message
@@ -29,11 +28,10 @@ def all_uids(account_id, session, folder_id):
         ImapUid.folder_id == folder_id)}
 
 
-def update_message_thread_metadata(session, imapuid):
-    # Update the message's metadata
+def update_message_metadata(session, imapuid):
+    # Update the message's metadata.
+    # STOPSHIP(emfree): ensure this properly creates a thread revision.
     imapuid.message.update_metadata(session, imapuid.is_draft)
-    # Update the thread's metadata
-    imapuid.message.thread.update_metadata(session)
 
 
 def update_metadata(account_id, session, folder_name, folder_id, uids,
@@ -63,7 +61,7 @@ def update_metadata(account_id, session, folder_name, folder_id, uids,
             changed = True
 
         if changed:
-            update_message_thread_metadata(session, item)
+            update_message_metadata(session, item)
 
 
 def remove_deleted_uids(account_id, session, uids, folder_id):

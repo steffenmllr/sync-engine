@@ -1,10 +1,8 @@
 import itertools
 from collections import defaultdict
 
-from sqlalchemy import (Column, Integer, String, DateTime, ForeignKey, Index,
-                        Boolean)
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship, backref, validates, object_session
-from sqlalchemy.sql.expression import false
 
 from inbox.log import get_logger
 log = get_logger()
@@ -42,8 +40,6 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
     recentdate = Column(DateTime, nullable=False, index=True)
     snippet = Column(String(191), nullable=True, default='')
     version = Column(Integer, nullable=True, server_default='0')
-    unread = Column(Boolean, server_default=false(), nullable=False)
-    starred = Column(Boolean, server_default=false(), nullable=False)
 
     @validates('subject')
     def compute_cleaned_up_subject(self, key, value):
@@ -66,11 +62,15 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
             if message.received_date < self.subjectdate:
                 self.subject = message.subject
                 self.subjectdate = message.received_date
-
-            self.unread = (not self.unread or message.is_read)
-            self.starred = (self.starred or message.is_starred)
-
             return message
+
+    @property
+    def unread(self):
+        return any(m.unread for m in self.messages if not m.is_draft)
+
+    @property
+    def starred(self):
+        return any(m.starred for m in self.messages if not m.is_draft)
 
     @property
     def versioned_relationships(self):
@@ -111,13 +111,6 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
     @property
     def attachments(self):
         return any(m.attachments for m in self.messages)
-
-    def update_metadata(self, session):
-        if any(m.is_read for m in self.messages):
-            self.unread = False
-
-        if any(m.is_starred for m in self.messages):
-            self.starred = True
 
     @property
     def account(self):

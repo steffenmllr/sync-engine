@@ -368,8 +368,8 @@ class FolderSyncEngine(Greenlet):
                         uid.update_flags(raw_message.flags)
                         db_session.add(uid)
 
-                        # Update the existing message + thread's metadata too
-                        common.update_message_thread_metadata(db_session, uid)
+                        # Update the existing message's metadata too
+                        common.update_message_metadata(db_session, uid)
 
                         del data_sha256_message[data_sha256]
                     else:
