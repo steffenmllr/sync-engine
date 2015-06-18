@@ -14,9 +14,13 @@ def update_message(message, request_data, db_session):
     if starred is not None and not isinstance(starred, bool):
         raise InputError('"starred" must be true or false')
 
+    label_public_ids = None
+    folder_public_id = None
+
     if message.namespace.account.provider == 'gmail':
-        labels = request_data.pop('labels', None)
-        if labels is not None and not isinstance(labels, list):
+        label_public_ids = request_data.pop('labels', None)
+        if (label_public_ids is not None and
+                not isinstance(label_public_ids, list)):
             # STOPSHIP(emfree): should also check that labels is an array of
             # /strings/
             raise InputError('"labels" must be a list of strings')
@@ -25,8 +29,9 @@ def update_message(message, request_data, db_session):
                              'attributes can be changed')
 
     else:
-        folder = request_data.pop('folder', None)
-        if folder is not None and not isinstance(folder, basestring):
+        folder_public_id = request_data.pop('folder', None)
+        if (folder_public_id is not None and
+                not isinstance(folder_public_id, basestring)):
             raise InputError('"folder" must be a list of strings')
         if request_data:
             raise InputError('Only the "unread", "starred" and "folder" '
@@ -42,9 +47,9 @@ def update_message(message, request_data, db_session):
         schedule_action('mark_starred', message, message.namespace_id,
                         db_session, starred=starred)
 
-    if labels is not None:
+    if label_public_ids is not None:
         categories = set()
-        for id_ in labels:
+        for id_ in label_public_ids:
             try:
                 cat = db_session.query(Category).filter(
                     Category.namespace_id == message.namespace_id,
@@ -90,9 +95,19 @@ def update_message(message, request_data, db_session):
                         added_labels=added_labels,
                         db_session=db_session)
 
-    #elif folder is not None:
-    #    # STOPSHIP(emfree)
-    #    raise NotImplementedError
+    elif folder_public_id is not None:
+        try:
+            cat = db_session.query(Category).filter(
+                Category.namespace_id == message.namespace_id,
+                Category.public_id == folder_public_id).one()
+        except NoResultFound:
+            raise InputError(u'Folder {} does not exist'.
+                             format(folder_public_id))
+
+        # STOPSHIP(emfree): what about sent/inbox duality?
+        message.categories = [cat]
+        schedule_action('move', message, message.namespace_id, db_session,
+                        destination=cat.display_name)
 
 
 def update_thread(thread, request_data, db_session):

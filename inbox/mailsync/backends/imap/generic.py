@@ -511,7 +511,6 @@ class FolderSyncEngine(Greenlet):
                         new_uids.add(uid)
                 db_session.commit()
 
-        self.saved_uids.update(new_uids)
         return len(new_uids)
 
     def update_metadata(self, crispin_client, updated):

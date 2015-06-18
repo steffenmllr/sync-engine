@@ -574,12 +574,6 @@ class CrispinClient(object):
         return {uid: Flags(ret['FLAGS'])
                 for uid, ret in data.items() if uid in uid_set}
 
-    def copy_uids(self, uids, to_folder):
-        if not uids:
-            return
-        uids = [str(u) for u in uids]
-        self.conn.copy(uids, to_folder)
-
     def delete_uids(self, uids):
         uids = [str(u) for u in uids]
         self.conn.delete_messages(uids)
@@ -979,49 +973,6 @@ class GmailCrispinClient(CondStoreCrispinClient):
         return sorted([long(uid) for uid in
                        self.conn.search(['UNDELETED', criteria])])
 
-    # -----------------------------------------
-    # following methods WRITE to IMAP account!
-    # -----------------------------------------
-
-    def archive_thread(self, g_thrid):
-        assert self.selected_folder_name in self.folder_names()['inbox'], \
-            'Must select INBOX first ({0})'.format(self.selected_folder_name)
-
-        uids = self.find_messages(g_thrid)
-        # Delete from inbox == archive for Gmail
-        if uids:
-            self.conn.delete_messages(uids)
-
-    def copy_thread(self, g_thrid, to_folder):
-        """ NOTE: Does nothing if the thread isn't in the currently selected
-            folder.
-        """
-        uids = self.find_messages(g_thrid)
-        if uids:
-            self.conn.copy(uids, to_folder)
-
-    def add_label(self, g_thrid, label_name):
-        """
-        NOTE: Does nothing if the thread isn't in the currently selected
-        folder.
-
-        """
-        uids = self.find_messages(g_thrid)
-        self.conn.add_gmail_labels(uids, [label_name])
-
-    def remove_label(self, g_thrid, label_name):
-        """
-        NOTE: Does nothing if the thread isn't in the currently selected
-        folder.
-
-        """
-        # Gmail won't even include the label of the selected folder (when the
-        # selected folder is a label) in the list of labels for a UID, FYI.
-        assert self.selected_folder_name != label_name, \
-            "Gmail doesn't support removing a selected label"
-        uids = self.find_messages(g_thrid)
-        self.conn.remove_gmail_labels(uids, [label_name])
-
     def get_labels(self, g_thrid):
         uids = self.find_messages(g_thrid)
         labels = self.conn.get_gmail_labels(uids)
@@ -1030,20 +981,6 @@ class GmailCrispinClient(CondStoreCrispinClient):
         unique_labels = set([item for sublist in labels.values()
                              for item in sublist])
         return list(unique_labels)
-
-    def set_unread(self, g_thrid, unread):
-        uids = self.find_messages(g_thrid)
-        if unread:
-            self.conn.remove_flags(uids, ['\\Seen'])
-        else:
-            self.conn.add_flags(uids, ['\\Seen'])
-
-    def set_starred(self, g_thrid, starred):
-        uids = self.find_messages(g_thrid)
-        if starred:
-            self.conn.add_flags(uids, ['\\Flagged'])
-        else:
-            self.conn.remove_flags(uids, ['\\Flagged'])
 
     def delete(self, g_thrid, folder_name):
         """

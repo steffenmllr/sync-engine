@@ -497,31 +497,20 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
             categories.update(i.categories)
 
         if self.account.category_type == 'folder':
-            categories = select_category(categories)
-            assert len(categories) == 1
+            categories = [select_category(categories)]
 
         self.categories = categories
 
         # TODO[k]: Update from pending actions here
 
-    def add_category(self, category, execute_action=False):
+    def add_category(self, category):
         if category not in self.categories:
             self.categories.add(category)
 
-        if execute_action:
-            # TODO[k]: Syncback action goes here
-            # Would perform folder/ label syncback based on provider
-            pass
-
-    def remove_category(self, category, execute_action=False):
+    def remove_category(self, category):
         if category not in self.categories:
             return
         self.categories.remove(category)
-
-        if execute_action:
-            # TODO[k]: Syncback action goes here
-            # Would perform folder/ label syncback based on provider
-            pass
 
 # Need to explicitly specify the index length for table generation with MySQL
 # 5.6 when columns are too long to be fully indexed with utf8mb4 collation.

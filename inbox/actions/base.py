@@ -38,7 +38,7 @@ def mark_unread(account_id, message_id, db_session, args):
     account = db_session.query(Account).get(account_id)
     set_remote_unread = module_registry[account.provider]. \
         set_remote_unread
-    set_remote_unread(account, message_id, unread, db_session)
+    set_remote_unread(account, message_id, db_session, unread)
 
 
 def mark_starred(account_id, message_id, db_session, args):
@@ -46,15 +46,14 @@ def mark_starred(account_id, message_id, db_session, args):
     account = db_session.query(Account).get(account_id)
     set_remote_starred = module_registry[account.provider]. \
         set_remote_starred
-    set_remote_starred(account, message_id, starred, db_session)
+    set_remote_starred(account, message_id, db_session, starred)
 
 
 def move(account_id, message_id, db_session, args):
-    from_folder = args['from_folder']
-    to_folder = args['to_folder']
+    destination = args['destination']
     account = db_session.query(Account).get(account_id)
     remote_move = module_registry[account.provider].remote_move
-    remote_move(account, message_id, db_session, from_folder, to_folder)
+    remote_move(account, message_id, db_session, destination)
 
 
 def change_labels(account_id, message_id, db_session, args):
