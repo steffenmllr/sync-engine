@@ -155,8 +155,8 @@ class ImapUid(MailSyncBase):
             else:
                 remote_normal_labels.add(name)
 
-        local_special_labels = {l for l in self.labels if l.canonical_name in
-                                special_label_map.values()}
+        local_special_labels = {l.canonical_name for l in self.labels if
+                                l.canonical_name in special_label_map.values()}
         local_normal_labels = {l.name for l in self.labels if l.canonical_name
                                not in special_label_map.values()}
 
