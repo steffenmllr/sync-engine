@@ -1,7 +1,6 @@
 from sqlalchemy import Column, String, Integer, ForeignKey
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
-from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
 from inbox.models.base import MailSyncBase
@@ -13,6 +12,7 @@ log = get_logger()
 
 
 class Category(MailSyncBase, HasRevisions):
+    # STOPSHIP(emfree): versioning must distinguish between folders and labels.
     API_OBJECT_NAME = 'category'
 
     # Need `use_alter` here to avoid circular dependencies
@@ -20,17 +20,12 @@ class Category(MailSyncBase, HasRevisions):
                           ForeignKey('namespace.id', use_alter=True,
                                      name='category_fk1',
                                      ondelete='CASCADE'), nullable=False)
-    namespace = relationship(
-        'Namespace',
-        backref=backref(
-            'categories',
-            collection_class=attribute_mapped_collection('public_id'),
-            passive_deletes=True),
-        load_on_pending=True)
+    namespace = relationship('Namespace', load_on_pending=True)
 
     public_id = Column(String(MAX_INDEXABLE_LENGTH), nullable=False,
                        default=generate_public_id)
 
+    # STOPSHIP(emfree): need to index properly for API filtering performance.
     name = Column(String(MAX_INDEXABLE_LENGTH), nullable=True)
     display_name = Column(String(MAX_INDEXABLE_LENGTH,
                                  collation='utf8mb4_bin'), nullable=False)
