@@ -66,11 +66,11 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
 
     @property
     def unread(self):
-        return any(m.unread for m in self.messages if not m.is_draft)
+        return not all(m.is_read for m in self.messages if not m.is_draft)
 
     @property
     def starred(self):
-        return any(m.starred for m in self.messages if not m.is_draft)
+        return any(m.is_starred for m in self.messages if not m.is_draft)
 
     @property
     def versioned_relationships(self):
