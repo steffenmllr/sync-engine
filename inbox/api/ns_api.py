@@ -14,7 +14,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.models.session import session_scope
 from inbox.models import (Message, Block, Part, Thread, Namespace,
-                          Contact, Calendar, Event, Transaction)
+                          Contact, Calendar, Event, Transaction, Category)
 from inbox.api.sending import send_draft
 from inbox.api.update import update_message, update_thread
 from inbox.api.kellogs import APIEncoder
@@ -353,6 +353,36 @@ def raw_message_api(public_id):
 
     b64_contents = base64.b64encode(message.full_body.data)
     return g.encoder.jsonify({"rfc2822": b64_contents})
+
+
+# Folders / Labels
+@app.route('/folders')
+@app.route('/labels')
+def folders_labels_query_api():
+    categories = g.db_session.query(Category). \
+        filter(Category.namespace_id == g.namespace.id).all()
+    return g.encoder.jsonify(categories)
+
+
+@app.route('/folders/<public_id>')
+def folder_api(public_id):
+    return folders_labels_api_impl(public_id)
+
+
+@app.route('/labels/<public_id>')
+def label_api(public_id):
+    return folders_labels_api_impl(public_id)
+
+
+def folders_labels_api_impl(public_id):
+    valid_public_id(public_id)
+    try:
+        category = g.db_session.query(Category). \
+            filter(Category.namespace_id == g.namespace.id,
+                   Category.public_id == public_id).all()
+    except NoResultFound:
+        raise NotFoundError("Object not found")
+    return g.encoder.jsonify(category)
 
 
 #
