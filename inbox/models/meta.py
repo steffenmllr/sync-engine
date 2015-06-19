@@ -11,7 +11,7 @@ def load_models():
     from inbox.models.calendar import Calendar
     from inbox.models.event import Event
     from inbox.models.folder import Folder
-    from inbox.models.message import Message
+    from inbox.models.message import Message, MessageCategory
     from inbox.models.namespace import Namespace
     from inbox.models.search import SearchIndexCursor
     from inbox.models.secret import Secret
@@ -24,5 +24,5 @@ def load_models():
                MessageContactAssociation, Contact, Calendar, Event, Folder,
                Message, Namespace, SearchIndexCursor, Secret,
                Thread, Transaction, When, Time, TimeSpan, Date, DateSpan,
-               Label, Category]
+               Label, Category, MessageCategory]
     return exports

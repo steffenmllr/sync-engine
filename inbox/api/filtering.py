@@ -2,13 +2,13 @@ from sqlalchemy import and_, or_, desc, asc, func
 from sqlalchemy.orm import subqueryload, contains_eager
 from inbox.models import (Contact, Event, Calendar, Message,
                           MessageContactAssociation, Thread,
-                          Block, Part)
+                          Block, Part, MessageCategory, Category)
 from inbox.models.event import RecurringEvent
 
 
 def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
             any_email, thread_public_id, started_before, started_after,
-            last_message_before, last_message_after, filename, limit,
+            last_message_before, last_message_after, filename, in_, limit,
             offset, view, db_session):
 
     if view == 'count':
@@ -85,7 +85,14 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
                    Block.namespace_id == namespace_id). \
             subquery()
         query = query.filter(Thread.id.in_(files_query))
-        query = query.join(files_query)
+
+    if in_ is not None:
+        category_query = db_session.query(Message.thread_id). \
+            join(MessageCategory).join(Category). \
+            filter(Category.namespace_id == namespace_id,
+                   or_(Category.name == in_, Category.display_name == in_)). \
+            subquery()
+        query = query.filter(Thread.id.in_(category_query))
 
     if view == 'count':
         return {"count": query.one()[0]}
@@ -119,11 +126,11 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
     return query.all()
 
 
-def _messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
-                        cc_addr, bcc_addr, any_email, thread_public_id,
-                        started_before, started_after, last_message_before,
-                        last_message_after, filename, limit, offset,
-                        view, db_session):
+def messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
+                       cc_addr, bcc_addr, any_email, thread_public_id,
+                       started_before, started_after, last_message_before,
+                       last_message_after, filename, in_, limit, offset,
+                       view, db_session):
 
     if view == 'count':
         query = db_session.query(func.count(Message.id))
@@ -207,6 +214,11 @@ def _messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
             filter(Block.filename == filename,
                    Block.namespace_id == namespace_id)
 
+    if in_ is not None:
+        query = query.join(MessageCategory).join(Category). \
+            filter(Category.namespace_id == namespace_id,
+                   or_(Category.name == in_, Category.display_name == in_))
+
     query = query.filter(*filters)
 
     if view == 'count':
@@ -225,30 +237,6 @@ def _messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
     query = query.options(subqueryload(Message.parts).joinedload(Part.block))
 
     return query.all()
-
-
-def messages(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
-             any_email, thread_public_id, started_before, started_after,
-             last_message_before, last_message_after, filename, limit,
-             offset, view, db_session):
-    return _messages_or_drafts(namespace_id, False, subject, from_addr,
-                               to_addr, cc_addr, bcc_addr, any_email,
-                               thread_public_id, started_before,
-                               started_after, last_message_before,
-                               last_message_after, filename, limit,
-                               offset, view, db_session)
-
-
-def drafts(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
-           any_email, thread_public_id, started_before, started_after,
-           last_message_before, last_message_after, filename, limit,
-           offset, view, db_session):
-    return _messages_or_drafts(namespace_id, True, subject, from_addr,
-                               to_addr, cc_addr, bcc_addr, any_email,
-                               thread_public_id, started_before,
-                               started_after, last_message_before,
-                               last_message_after, filename, limit,
-                               offset, view, db_session)
 
 
 def files(namespace_id, message_public_id, filename, content_type,
