@@ -27,6 +27,7 @@ log = get_logger()
 INDEX_SETTINGS = {
     "number_of_shards": 1
 }
+ES_DEFAULT_TIMEOUT = 60
 
 
 class Serializer(elasticsearch.serializer.JSONSerializer):
@@ -53,7 +54,8 @@ def new_connection():
     if not elasticsearch_hosts:
         raise SearchEngineError('No search hosts configured')
     return elasticsearch.Elasticsearch(hosts=elasticsearch_hosts,
-                                       serializer=Serializer())
+                                       serializer=Serializer(),
+                                       timeout=ES_DEFAULT_TIMEOUT)
 
 
 def wrap_es_errors(func):
@@ -254,6 +256,18 @@ class BaseSearchAdaptor(object):
                 raise SearchEngineError('Bulk index failure!')
 
         return count
+
+    @wrap_es_errors
+    def count(self, query=None):
+        search_kwargs = dict(
+            index=self.index_id,
+            doc_type=self.doc_type,
+        )
+        if query:
+            search_kwargs.update(body=self.search_engine.generate_query(query))
+
+        raw_result = self._connection.count(**search_kwargs)
+        return raw_result.get("count", 0)
 
     @wrap_es_errors
     def search(self, query, sort, max_results=100, offset=0, explain=True):
