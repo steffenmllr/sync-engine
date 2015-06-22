@@ -70,14 +70,14 @@ def remote_move(account, message_id, db_session, destination):
 
 
 @retry_crispin
-def remote_save_draft(account, folder_name, message, db_session, date=None):
+def remote_save_draft(account, message, db_session, date=None):
     with writable_connection_pool(account.id).get() as crispin_client:
         # Create drafts folder on the backend if it doesn't exist.
         if 'drafts' not in crispin_client.folder_names():
-            # STOPSHIP(emfree): log and continue?
-            crispin_client.create_folder('Drafts')
-
-        assert folder_name == crispin_client.folder_names()['drafts']
+            log.info('Account has no detected drafts folder; not saving draft',
+                     account_id=account.id)
+            return
+        folder_name = crispin_client.folder_names()['drafts'][0]
         crispin_client.select_folder(folder_name, uidvalidity_cb)
         crispin_client.save_draft(message, date)
 
@@ -88,16 +88,14 @@ def remote_delete_draft(account, inbox_uid, message_id_header, db_session):
         crispin_client.delete_draft(inbox_uid, message_id_header)
 
 
-def remote_save_sent(account, folder_name, message, db_session, date=None,
-                     create_backend_sent_folder=False):
-    def fn(account, db_session, crispin_client):
-        if create_backend_sent_folder:
-            if 'sent' not in crispin_client.folder_names():
-                crispin_client.create_folder('Sent')
+@retry_crispin
+def remote_save_sent(account, message, date=None):
+    with writable_connection_pool(account.id).get() as crispin_client:
+        if 'sent' not in crispin_client.folder_names():
+            log.info('Account has no detected sent folder; not saving message',
+                     account_id=account.id)
+            return
 
+        folder_name = crispin_client.folder_names()['sent'][0]
         crispin_client.select_folder(folder_name, uidvalidity_cb)
         crispin_client.create_message(message, date)
-
-    # STOPSHIP(emfree): fix
-    return syncback_action(fn, account, folder_name, db_session,
-                           select_folder=False)

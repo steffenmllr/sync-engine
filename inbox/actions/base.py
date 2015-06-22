@@ -25,7 +25,7 @@ at-least-once semantics.
 """
 from inbox.actions.backends import module_registry
 
-from inbox.models import Account, Message, Folder
+from inbox.models import Account, Message
 from inbox.sendmail.base import generate_attachments
 from inbox.sendmail.message import create_email
 from inbox.log import get_logger
@@ -138,16 +138,6 @@ def save_sent_email(account_id, message_id, db_session):
                  message_id=message_id, account_id=account_id)
         return
 
-    create_backend_sent_folder = False
-    if account.sent_folder is None:
-        # account has no detected drafts folder - create one.
-        sent_folder = Folder.find_or_create(db_session, account,
-                                            'Sent', 'sent')
-        account.sent_folder = sent_folder
-        create_backend_sent_folder = True
-
     mimemsg = _create_email(account, message)
     remote_save_sent = module_registry[account.provider].remote_save_sent
-    remote_save_sent(account, account.sent_folder.name,
-                     mimemsg, message.created_at,
-                     create_backend_sent_folder)
+    remote_save_sent(account, mimemsg, message.created_at)
