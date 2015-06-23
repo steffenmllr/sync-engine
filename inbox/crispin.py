@@ -49,7 +49,7 @@ GMetadata = namedtuple('GMetadata', 'msgid thrid')
 RawMessage = namedtuple(
     'RawImapMessage',
     'uid internaldate flags body g_thrid g_msgid g_labels')
-RawFolder = namedtuple('RawFolder', 'display_name canonical_name')
+RawFolder = namedtuple('RawFolder', 'display_name category')
 
 # Lazily-initialized map of account ids to lock objects.
 # This prevents multiple greenlets from concurrently creating duplicate
@@ -391,7 +391,7 @@ class CrispinClient(object):
 
             raw_folders = self.folders()
             for f in raw_folders:
-                self._folder_names[f.canonical_name].append(f.display_name)
+                self._folder_names[f.category].append(f.display_name)
 
         return self._folder_names
 
@@ -452,17 +452,16 @@ class CrispinClient(object):
         flag_map = {'\\Trash': 'trash', '\\Sent': 'sent', '\\Drafts': 'drafts',
                     '\\Junk': 'spam', '\\Inbox': 'inbox', '\\Spam': 'spam'}
 
-        canonical_name = default_folder_map.get(display_name.lower())
+        category = default_folder_map.get(display_name.lower())
 
-        if not canonical_name:
-            canonical_name = folder_map.get(display_name)
+        if not category:
+            category = folder_map.get(display_name)
 
-        if not canonical_name:
+        if not category:
             for flag in flags:
-                canonical_name = flag_map.get(flag)
+                category = flag_map.get(flag)
 
-        return RawFolder(display_name=display_name,
-                         canonical_name=canonical_name)
+        return RawFolder(display_name=display_name, category=category)
 
     def folder_status(self, folder):
         status = [long(val) for val in self.conn.folder_status(
@@ -840,7 +839,7 @@ class GmailCrispinClient(CondStoreCrispinClient):
 
             raw_folders = self.folders()
             for f in raw_folders:
-                self._folder_names[f.canonical_name].append(f.display_name)
+                self._folder_names[f.category].append(f.display_name)
 
         return self._folder_names
 
@@ -882,18 +881,17 @@ class GmailCrispinClient(CondStoreCrispinClient):
                     '\\Sent': 'sent', '\\Junk': 'spam', '\\Flagged': 'starred',
                     '\\Trash': 'trash'}
 
-        canonical_name = None
+        category = None
         if '\\All' in flags:
-            canonical_name = 'all'
+            category = 'all'
         elif display_name.lower() == 'inbox':
-            canonical_name = 'inbox'
+            category = 'inbox'
         else:
             for flag in flags:
                 if flag in flag_map:
-                    canonical_name = flag_map[flag]
+                    category = flag_map[flag]
 
-        return RawFolder(display_name=display_name,
-                         canonical_name=canonical_name)
+        return RawFolder(display_name=display_name, category=category)
 
     def uids(self, uids):
         raw_messages = self.conn.fetch(uids, ['BODY.PEEK[] INTERNALDATE FLAGS',

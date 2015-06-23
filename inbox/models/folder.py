@@ -48,35 +48,35 @@ class Folder(MailSyncBase):
                         cascade='all, delete-orphan'))
 
     @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None):
+    def find_or_create(cls, session, account, name, category=None):
         q = session.query(cls).filter(cls.account_id == account.id)
 
-        if canonical_name is not None:
-            q = q.filter(cls.canonical_name == canonical_name)
-        else:
-            # Remove trailing whitespace, truncate to max folder name length.
-            # Not ideal but necessary to work around MySQL limitations.
-            name = name.rstrip()
-            if len(name) > MAX_FOLDER_NAME_LENGTH:
-                log.warning("Truncating long folder name for account {}; "
-                            "original name was '{}'" .format(account.id, name))
-                name = name[:MAX_FOLDER_NAME_LENGTH]
-            q = q.filter_by(name=name)
+        if category is not None:
+            q = q.filter(cls.canonical_name == category)
+
+        # Remove trailing whitespace, truncate to max folder name length.
+        # Not ideal but necessary to work around MySQL limitations.
+        name = name.rstrip()
+        if len(name) > MAX_FOLDER_NAME_LENGTH:
+            log.warning("Truncating long folder name for account {}; "
+                        "original name was '{}'" .format(account.id, name))
+            name = name[:MAX_FOLDER_NAME_LENGTH]
+        q = q.filter(cls.name == name)
 
         try:
             obj = q.one()
         except NoResultFound:
-            obj = cls(account=account, name=name,
-                      canonical_name=canonical_name)
+            obj = cls(account=account, name=name, canonical_name=category)
             obj.category = Category.find_or_create(
-                session, namespace_id=account.namespace.id,
-                name=canonical_name, display_name=name)
+                session, namespace_id=account.namespace.id, name=category,
+                display_name=name)
             session.add(obj)
         except MultipleResultsFound:
-            log.info('Duplicate folder rows for folder {} for account {}'
+            log.info('Duplicate folder rows for name {}, account_id {}'
                      .format(name, account.id))
             raise
 
         return obj
 
-    __table_args__ = (UniqueConstraint('account_id', 'name'),)
+    __table_args__ = \
+        (UniqueConstraint('account_id', 'name', 'canonical_name'),)

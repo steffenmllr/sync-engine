@@ -73,44 +73,38 @@ class GmailSyncMonitor(ImapSyncMonitor):
 
         """
         account = db_session.query(Account).get(account_id)
+        remote_label_names = {l.display_name.rstrip()[:MAX_LABEL_NAME_LENGTH]
+                              for l in raw_folders}
 
-        canonical_folders, labels = [], []
-        for f in raw_folders:
-            if f.canonical_name:
-                canonical_folders.append(f.canonical_name)
-            else:
-                labels.append(f.display_name.rstrip()[:MAX_LABEL_NAME_LENGTH])
-
-        assert 'all' in canonical_folders, \
-            'Account {} has no detected folder; folders: {}'.\
-            format(account.email_address, canonical_folders)
+        assert 'all' in {l.category for l in raw_folders},\
+            'Account {} has no detected All Mail folder'.\
+            format(account.email_address)
 
         local_labels = {l.name: l for l in db_session.query(Label).filter(
-                        Label.account_id == account_id,
-                        Label.canonical_name.is_(None)).all()}
+                        Label.account_id == account_id).all()}
 
         # Delete labels no longer present on the remote.
-        # Note that canonical folders cannot be deleted.
-        discard = set(local_labels) - set(labels)
+        # Note that the label with canonical_name='all' cannot be deleted;
+        # remote_label_names will always contain an entry corresponding to it.
+        discard = set(local_labels) - set(remote_label_names)
         for name in discard:
             log.info('Label deleted from remote',
                      account_id=account_id, name=name)
             db_session.delete(local_labels[name])
 
-        # Create new Folders, Labels
+        # Create new labels, folders
         for raw_folder in raw_folders:
-            Label.find_or_create(db_session, account,
-                                 raw_folder.display_name,
-                                 raw_folder.canonical_name)
+            Label.find_or_create(db_session, account, raw_folder.display_name,
+                                 raw_folder.category)
 
-            if raw_folder.canonical_name in ('all', 'spam', 'trash'):
+            if raw_folder.category in ('all', 'spam', 'trash'):
                 folder = Folder.find_or_create(db_session, account,
                                                raw_folder.display_name,
-                                               raw_folder.canonical_name)
+                                               raw_folder.category)
                 if folder.name != raw_folder.display_name:
-                    log.info('Canonical folder name changed on remote',
+                    log.info('Folder name changed on remote',
                              account_id=account_id,
-                             canonical_name=raw_folder.canonical_name,
+                             category=raw_folder.category,
                              new_name=raw_folder.display_name,
                              name=folder.name)
                     folder.name = raw_folder.display_name

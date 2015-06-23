@@ -5,6 +5,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from inbox.log import get_logger
 from inbox.crispin import retry_crispin, connection_pool
 from inbox.models import Account, Folder
+from inbox.models.constants import MAX_FOLDER_NAME_LENGTH
 from inbox.mailsync.backends.base import BaseMailSyncMonitor
 from inbox.mailsync.backends.base import (MailsyncError,
                                           mailsync_session_scope,
@@ -106,17 +107,19 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
 
         """
         account = db_session.query(Account).get(account_id)
-        remote_folder_names = {f.display_name for f in raw_folders}
+        remote_folder_names = {f.display_name.rstrip()[:MAX_FOLDER_NAME_LENGTH]
+                               for f in raw_folders}
 
-        assert 'inbox' in {f.canonical_name for f in raw_folders}, \
-            'Account {} has no detected inbox folder'. \
+        assert 'inbox' in {f.category for f in raw_folders},\
+            'Account {} has no detected inbox folder'.\
             format(account.email_address)
 
         local_folders = {f.name: f for f in db_session.query(Folder).filter(
                          Folder.account_id == account_id)}
 
         # Delete folders no longer present on the remote.
-        # Note that canonical folders cannot be deleted.
+        # Note that the folder with canonical_name='inbox' cannot be deleted;
+        # remote_folder_names will always contain an entry corresponding to it.
         discard = set(local_folders) - remote_folder_names
         for name in discard:
             log.info('Folder deleted from remote', account_id=account_id,
@@ -126,7 +129,7 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
         # Create new folders
         for raw_folder in raw_folders:
             Folder.find_or_create(db_session, account, raw_folder.display_name,
-                                  raw_folder.canonical_name)
+                                  raw_folder.category)
 
         db_session.commit()
 

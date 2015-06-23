@@ -142,49 +142,36 @@ class ImapUid(MailSyncBase):
         self.is_draft = '\\Draft' in new_labels
         self.is_starred = '\\Starred' in new_labels
 
-        special_label_map = {
+        category_map = {
             '\\Inbox': 'inbox',
             '\\Important': 'important',
             '\\Sent': 'sent'
         }
-        remote_special_labels = set()
-        remote_normal_labels = set()
-        for name in new_labels:
-            if name in special_label_map:
-                remote_special_labels.add(special_label_map[name])
-            elif name not in ('\\Draft', '\\Starred'):
-                remote_normal_labels.add(name)
 
-        local_special_labels = {l.canonical_name for l in self.labels if
-                                l.canonical_name in special_label_map.values()}
-        local_normal_labels = {l.name for l in self.labels if l.canonical_name
-                               not in special_label_map.values()}
+        remote_labels = set()
+        for label in new_labels:
+            if label in ('\\Draft', '\\Starred'):
+                continue
+            elif label in category_map:
+                remote_labels.add((category_map[label], category_map[label]))
+            else:
+                remote_labels.add((label, None))
+
+        local_labels = {(l.name, l.canonical_name) for l in self.labels}
+
+        remove = local_labels - remote_labels
+        add = remote_labels - local_labels
 
         with object_session(self).no_autoflush as session:
-            new_normal = remote_normal_labels - local_normal_labels
-            removed_normal = local_normal_labels - remote_normal_labels
-            for name in new_normal:
-                label = Label.find_or_create(session, self.account, name)
+            for name, canonical_name in remove:
+                label = Label.find_or_create(session, self.account, name,
+                                             canonical_name)
+                self.labels.remove(label)
+
+            for name, canonical_name in add:
+                label = Label.find_or_create(session, self.account, name,
+                                             canonical_name)
                 self.labels.add(label)
-
-            if removed_normal:
-                for label in session.query(Label).filter(
-                        Label.account_id == self.account.id,
-                        Label.name.in_(removed_normal)).all():
-                    self.labels.remove(label)
-
-            new_special = remote_special_labels - local_special_labels
-            removed_special = local_special_labels - remote_special_labels
-            for canonical_name in new_special:
-                label = Label.find_or_create(session, self.account,
-                                             canonical_name, canonical_name)
-                self.labels.add(label)
-
-            if removed_special:
-                for label in session.query(Label).filter(
-                        Label.account_id == self.account.id,
-                        Label.canonical_name.in_(removed_special)).all():
-                    self.labels.remove(label)
 
     @property
     def namespace(self):
