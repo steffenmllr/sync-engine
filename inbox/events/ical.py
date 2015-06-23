@@ -1,17 +1,18 @@
 import sys
 import pytz
+import uuid
 import arrow
 import traceback
-from datetime import datetime, date
 import icalendar
+from datetime import datetime, date
 from icalendar import Calendar as iCalendar
 
-from inbox.models.event import Event, EVENT_STATUSES
-from inbox.events.util import MalformedEventError
-from inbox.util.addr import canonicalize_address
 from flanker import mime
 from util import serialize_datetime
 from timezones import timezones_table
+from inbox.models.event import Event, EVENT_STATUSES
+from inbox.events.util import MalformedEventError
+from inbox.util.addr import canonicalize_address
 
 from inbox.log import get_logger
 log = get_logger()
@@ -483,3 +484,115 @@ def send_rsvp(ical_data, event, body_text, account):
 
     final_message = msg.to_string()
     sendmail_client._send([rsvp_to], final_message)
+
+
+def generate_icalendar_invite(event):
+    # Generates an iCalendar invite from an event.
+    cal = iCalendar()
+    cal.add('PRODID', '-//Nylas sync engine//nylas.com//')
+    cal.add('METHOD', 'REQUEST')
+    cal.add('VERSION', '2.0')
+    cal.add('CALSCALE', 'GREGORIAN')
+
+    icalendar_event = icalendar.Event()
+
+    icalendar_event['uid'] = "{}@nylas.com".format(uuid.uuid4().hex)
+
+    account = event.namespace.account
+    organizer = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
+    if account.name is not None:
+        organizer.params['CN'] = account.name
+
+    icalendar_event['organizer'] = organizer
+    icalendar_event['sequence'] = 0
+    icalendar_event['X-MICROSOFT-CDO-APPT-SEQUENCE'] = icalendar_event['sequence']
+    icalendar_event['status'] = 'CONFIRMED'
+    icalendar_event['last-modified'] = serialize_datetime(event.updated_at)
+    icalendar_event['dtstamp'] = icalendar_event['last-modified']
+    icalendar_event['created'] = serialize_datetime(event.created_at)
+    icalendar_event['dtstart'] = serialize_datetime(event.start)
+    icalendar_event['dtend'] = serialize_datetime(event.end)
+    icalendar_event['transp'] = 'OPAQUE'
+
+    if event.description is not None:
+        icalendar_event['description'] = event.description
+
+    if event.location is not None:
+        icalendar_event['location'] = event.location
+    else:
+        icalendar_event['location'] = ''
+
+    if event.title is not None:
+        icalendar_event['summary'] = event.title
+    else:
+        icalendar_event['summary'] = ''
+    # icalendar_event['transp'] = event.busy
+
+    attendees = []
+    for participant in event.participants:
+        email = participant.get('email', None)
+
+        # FIXME @karim: handle the case where a participant has no address.
+        # We may have to patch the iCalendar module for this.
+        assert email is not None and email != ""
+
+        attendee = icalendar.vCalAddress("MAILTO:{}".format(email))
+        name = participant.get('name', None)
+        if name is not None:
+            # attendee.params['CN'] = name
+            pass
+
+        attendee.params['RSVP'] = 'TRUE'
+        attendee.params['ROLE'] = 'REQ-PARTICIPANT'
+        attendee.params['CUTYPE'] = 'INDIVIDUAL'
+        attendee.params['PARTSTAT'] = 'NEEDS-ACTION'
+        attendees.append(attendee)
+
+    # The organizer needs to be listed as an attendee too
+    #organizer_attendee = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
+    #organizer_attendee.params['ROLE'] = 'REQ-PARTICIPANT'
+    #organizer_attendee.params['PARTSTAT'] = 'ACCEPTED'
+    #organizer_attendee.params['CN'] = account.name
+    #attendees.append(organizer_attendee)
+
+    if attendees != []:
+        icalendar_event.add('ATTENDEE', attendees)
+
+    cal.add_component(icalendar_event)
+    return cal.to_ical()
+
+
+def send_invite(ical_txt, event, account):
+    from inbox.sendmail.base import get_sendmail_client
+    sendmail_client = get_sendmail_client(account)
+
+    body_text = "BODY TEXT"
+    msg = mime.create.multipart('mixed')
+
+    body = mime.create.multipart('alternative')
+    body.append(
+        mime.create.text('plain', 'texte plein'),
+        mime.create.text('html', body_text),
+        mime.create.text('calendar; method=REQUEST', ical_txt, charset='utf8'))
+
+    attachment = mime.create.attachment(
+                     'text/calendar',
+                     ical_txt,
+                     'invite.ics',
+                     disposition='attachment')
+
+    msg.append(body)
+    msg.append(attachment)
+
+    msg.headers['Reply-To'] = account.email_address
+    msg.headers['From'] = account.email_address
+    msg.headers['Subject'] = "Invite: {}".format(event.title)
+
+    for participant in event.participants:
+        email = participant.get('email', None)
+        if email is None:
+            continue
+
+        msg.headers['To'] = email
+        final_message = msg.to_string().replace('method=request', 'method=REQUEST')
+        sendmail_client._send([email], final_message)
