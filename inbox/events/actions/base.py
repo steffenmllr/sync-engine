@@ -16,6 +16,11 @@ def update_event(account_id, event_id, db_session, *args):
     account = db_session.query(Account).get(account_id)
     event = db_session.query(Event).get(event_id)
 
+    # It doesn't make sense to update or delete an event we imported from
+    # an iCalendar file.
+    if event.calendar == account.emailed_events_calendar:
+        return
+
     remote_update_event = module_registry[account.provider].remote_update_event
 
     remote_update_event(account, event, db_session)
@@ -28,6 +33,9 @@ def delete_event(account_id, event_id, db_session, args):
     calendar_name = args.get('calendar_name')
     # The calendar_uid argument is required for some providers, like EAS.
     calendar_uid = args.get('calendar_uid')
+
+    if calendar_name == 'Emailed events':
+        return
 
     remote_delete_event(account, event_uid, calendar_name, calendar_uid,
                         db_session)

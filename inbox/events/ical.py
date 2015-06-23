@@ -119,7 +119,9 @@ def events_from_ics(namespace, calendar, ics_str):
             if summaries != []:
                 title = " - ".join(summaries)
 
-            description = unicode(component.get('description'))
+            description = component.get('description')
+            if description is not None:
+                description = unicode(description)
 
             event_status = component.get('status')
             if event_status is not None:
@@ -229,7 +231,7 @@ def events_from_ics(namespace, calendar, ics_str):
                 end=end,
                 busy=True,
                 all_day=all_day,
-                read_only=True,
+                read_only=False,
                 is_owner=is_owner,
                 last_modified=last_modified,
                 original_start_tz=original_start_tz,
@@ -279,7 +281,6 @@ def import_attached_events(db_session, account, message):
 
         # Get the list of events which share a uid with those we received.
         existing_events = db_session.query(Event).filter(
-            Event.calendar_id == account.emailed_events_calendar.id,
             Event.namespace_id == account.namespace.id,
             Event.uid.in_(new_uids)).all()
 
@@ -380,17 +381,13 @@ def _generate_individual_rsvp(message, status, account, ical_str):
 
             number_of_vevent_sections += 1
 
-    # This is a sanity check. We shouldn't receive an empty event --
-    # especially since this is an autoimported event, but you never know.
-    if number_of_vevent_sections == 0:
+    # This is a sanity check. We shouldn't receive an empty event or
+    # multiple events.
+    if number_of_vevent_sections != 1:
+        log.error('number_of_vevent_sections != 1',
+                  number=number_of_vevent_sections, account_id=account.id,
+                  ical_str=ical_str)
         return None
-
-    # Another one. In theory we shouldn't receive an invite with more
-    # than one event.
-    if number_of_vevent_sections > 1:
-        log.error('RSVP invite with more than two events',
-                  account_id=account.id, ical_str=ical_str)
-        assert number_of_vevent_sections < 2, "Calendar containing two events."
 
     if organizer is None or uid is None:
         return None

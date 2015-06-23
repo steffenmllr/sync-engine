@@ -759,26 +759,31 @@ def event_rsvp_api(public_id):
         raise InputError('This is not a message imported '
                          'from an iCalendar invite.')
 
-    data = request.get_json(force=True)
-
     # Note: this assumes that the email invite was directly addressed to us
     # (i.e: that there's no email alias to redirect ben.bitdiddle@nylas
     #  to ben@nylas.)
-    addresses = [p["email"] for p in event.participants]
+    participants = {p["email"]: p for p in event.participants}
 
     account = g.namespace.account
     email = account.email_address
-    if email not in addresses:
-        raise InputError('Cannot find the %s among the participants' % email)
 
-    if 'status' not in data:
+    if email not in participants:
+        raise InputError('Cannot find %s among the participants' % email)
+
+    participant = participants[email]
+
+    if 'status' not in participant:
+        # Shouldn't happen in theory.
         raise InputError('Cannot RSVP to an event without a status')
 
-    if data['status'] not in ['yes', 'no', 'maybe']:
-        raise InputError('Invalid status')
+    if participant['status'] not in ['yes', 'no', 'maybe']:
+        raise InputError('Invalid status %s' % participant['status'])
 
-    body_text = data.get('comment', 'I will come to our appointment.')
-    ical_data = generate_rsvp(event.message, data, account)
+    body_text = participant.get('comment', '')
+    ical_data = generate_rsvp(event.message, participant, account)
+
+    if ical_data is None:
+        raise APIException("Couldn't parse the attached iCalendar invite")
 
     try:
         send_rsvp(ical_data, event, body_text, account)
