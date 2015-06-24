@@ -364,6 +364,25 @@ def folders_labels_query_api():
     return g.encoder.jsonify(categories)
 
 
+# STOPSHIP(emfree): demo hacks
+@app.route('/labels', methods=['POST'])
+@app.route('/folders', methods=['POST'])
+def label_create_api():
+    data = request.get_json(force=True)
+    if 'name' not in data:
+        raise InputError('Must specify a label name')
+    label_name = data['name']
+    from inbox.crispin import writable_connection_pool
+    with writable_connection_pool(g.namespace.account.id).get() as \
+            crispin_client:
+        crispin_client.conn.create_folder(label_name)
+    category = Category(namespace_id=g.namespace.id,
+                        display_name=label_name,
+                        name=label_name)
+    g.db_session.add(category)
+    return g.encoder.jsonify(category)
+
+
 @app.route('/folders/<public_id>')
 def folder_api(public_id):
     return folders_labels_api_impl(public_id)
