@@ -7,6 +7,7 @@ from sqlalchemy import (Column, String, ForeignKey, Text, Boolean, Integer,
                         DateTime, Enum, Index, event)
 from sqlalchemy.orm import relationship, backref, validates, reconstructor
 from sqlalchemy.types import TypeDecorator
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.ext.associationproxy import association_proxy
 
 from inbox.sqlalchemy_ext.util import MAX_TEXT_LENGTH, BigJSON, MutableList
@@ -102,7 +103,9 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     title = Column(String(TITLE_MAX_LEN), nullable=True)
     # The database column is named differently for legacy reasons.
     owner = Column('owner2', String(OWNER_MAX_LEN), nullable=True)
-    description = Column(Text, nullable=True)
+
+    _description_deprecated = Column('description', Text, nullable=True)
+    _description = Column(LONGTEXT, nullable=True)
     location = Column(String(LOCATION_MAX_LEN), nullable=True)
     busy = Column(Boolean, nullable=False, default=True)
     read_only = Column(Boolean, nullable=False)
@@ -141,6 +144,15 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     def validate_length(self, key, value):
         max_len = _LENGTHS[key]
         return value if value is None else value[:max_len]
+
+    @property
+    def description(self):
+        return self._description or self._description_deprecated
+
+    @description.setter
+    def description(self, value):
+        self._description = value
+        self._description_deprecated = value
 
     @property
     def when(self):
