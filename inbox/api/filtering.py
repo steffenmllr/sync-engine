@@ -130,7 +130,7 @@ def messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
                        cc_addr, bcc_addr, any_email, thread_public_id,
                        started_before, started_after, last_message_before,
                        last_message_after, filename, in_, limit, offset,
-                       view, db_session):
+                       view, db_session, unread=None):
 
     if view == 'count':
         query = db_session.query(func.count(Message.id))
@@ -218,6 +218,10 @@ def messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
         query = query.join(MessageCategory).join(Category). \
             filter(Category.namespace_id == namespace_id,
                    or_(Category.name == in_, Category.display_name == in_))
+
+    if unread is not None:
+        is_read = not unread
+        filters.append(Message.is_read == is_read)
 
     query = query.filter(*filters)
 

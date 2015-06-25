@@ -259,6 +259,7 @@ def message_query_api():
     g.parser.add_argument('in', type=bounded_str, location='args')
     g.parser.add_argument('thread_id', type=valid_public_id, location='args')
     g.parser.add_argument('view', type=view, location='args')
+    g.parser.add_argument('unread', type=strict_bool, location='args')
     args = strict_parse_args(g.parser, request.args)
     messages = filtering.messages_or_drafts(
         namespace_id=g.namespace.id,
@@ -279,7 +280,8 @@ def message_query_api():
         limit=args['limit'],
         offset=args['offset'],
         view=args['view'],
-        db_session=g.db_session)
+        db_session=g.db_session,
+        unread=args['unread'])
 
     return g.encoder.jsonify(messages)
 
@@ -380,7 +382,25 @@ def label_create_api():
                         display_name=label_name,
                         name=label_name)
     g.db_session.add(category)
+    g.db_session.flush()
     return g.encoder.jsonify(category)
+
+
+@app.route('/labels', methods=['DELETE'])
+@app.route('/folders', methods=['DELETE'])
+def label_delete_api():
+    data = request.get_json(force=True)
+    category = g.db_session.query(Category).filter(
+        Category.namespace_id == g.namespace.id,
+        Category.public_id == data['id']).one()
+    g.db_session.delete(category)
+    g.db_session.flush()
+
+    from inbox.crispin import writable_connection_pool
+    with writable_connection_pool(g.namespace.account.id).get() as \
+            crispin_client:
+        crispin_client.conn.delete_folder(category.display_name)
+    return g.encoder.jsonify(None)
 
 
 @app.route('/folders/<public_id>')

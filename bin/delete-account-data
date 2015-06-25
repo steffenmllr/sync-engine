@@ -35,11 +35,11 @@ def delete_account_data(account_id):
         namespace_id = account.namespace.id
         namespace_public_id = account.namespace.public_id
 
-        if account.sync_should_run or not account.is_deleted:
-            print 'Account with id {} NOT marked for deletion.\n'\
-                  'Will NOT delete, goodbye.'.format(account_id)
-            return -1
-
+#        if account.sync_should_run or not account.is_deleted:
+#            print 'Account with id {} NOT marked for deletion.\n'\
+#                  'Will NOT delete, goodbye.'.format(account_id)
+#            return -1
+#
     question = 'Are you sure you want to delete all data for account with '\
                'id: {}, email_address: {} and namespace_id: {}? [yes / no]'.\
                format(account_id, email_address, namespace_id)
@@ -54,16 +54,16 @@ def delete_account_data(account_id):
     start = time.time()
 
     # Delete search data
-    try:
-        print 'Deleting search data'
-        delete_index(namespace_id, namespace_public_id)
-    except Exception as e:
-        print 'Deletion of search data failed! Error: {}\n'\
-              'Will NOT delete from database, goodbye.'.format(str(e))
-        return -1
-
-    search_end = time.time()
-    print 'Search data deleted. Time taken: {}'.format(search_end - start)
+#    try:
+#        print 'Deleting search data'
+#        delete_index(namespace_id, namespace_public_id)
+#    except Exception as e:
+#        print 'Deletion of search data failed! Error: {}\n'\
+#              'Will NOT delete from database, goodbye.'.format(str(e))
+#        return -1
+#
+#    search_end = time.time()
+#    print 'Search data deleted. Time taken: {}'.format(search_end - start)
 
     # Delete data in database
     try:
