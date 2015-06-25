@@ -48,16 +48,12 @@ def update_draft_on_send(account, draft, db_session):
 
 
 def send_raw_mime(account, db_session, msg):
-    recipient_emails = [email for name, email in itertools.chain(
-        msg.bcc_addr, msg.cc_addr, msg.to_addr)]
     # Prepare a response so that we can immediately return it on success, and
     # not potentially have queries fail after sending.
     response_on_success = APIEncoder().jsonify(msg)
     try:
         sendmail_client = get_sendmail_client(account)
-        # msg.full_body.data includes inbox headers
-        sendmail_client.send_raw(msg.from_addr, msg.full_body.data,
-                                 recipient_emails)
+        sendmail_client.send_raw(msg)
     except SendMailException as exc:
         kwargs = {}
         if exc.failures:
