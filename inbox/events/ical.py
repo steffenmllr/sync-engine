@@ -496,7 +496,7 @@ def generate_icalendar_invite(event):
 
     icalendar_event = icalendar.Event()
 
-    icalendar_event['uid'] = "{}@nylas.com".format(uuid.uuid4().hex)
+    icalendar_event['uid'] = "{}@nylas.com".format(event.public_id)
 
     account = event.namespace.account
     organizer = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
@@ -571,18 +571,18 @@ def send_invite(ical_txt, event, account):
 
     body = mime.create.multipart('alternative')
     body.append(
-        mime.create.text('plain', 'texte plein'),
-        mime.create.text('html', body_text),
+        mime.create.text('plain', ''),
+        mime.create.text('html', ''),
         mime.create.text('calendar; method=REQUEST', ical_txt, charset='utf8'))
 
-    attachment = mime.create.attachment(
-                     'text/calendar',
-                     ical_txt,
-                     'invite.ics',
-                     disposition='attachment')
+    #attachment = mime.create.attachment(
+    #                 'application/ics',
+    #                 ical_txt,
+    #                 'invite.ics',
+    #                 disposition='attachment')
 
     msg.append(body)
-    msg.append(attachment)
+    # msg.append(attachment)
 
     msg.headers['Reply-To'] = account.email_address
     msg.headers['From'] = account.email_address

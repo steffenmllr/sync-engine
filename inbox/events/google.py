@@ -179,7 +179,7 @@ class GoogleEventsProvider(object):
 
     def create_remote_event(self, event):
         data = _dump_event(event)
-        r = self._make_event_request('post', event.calendar.uid, json=data)
+        r = self._make_event_request('post', event.calendar.uid, json=data, params={'sendNotifications': 'true'})
         return r.json()
 
     def update_remote_event(self, event):
