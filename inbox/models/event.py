@@ -133,6 +133,10 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
     participants = Column(MutableList.as_mutable(BigJSON), default=[],
                           nullable=True)
 
+    # This is only used by the iCalendar invite code. The sequence number
+    # stores the version number of the invite.
+    sequence_number = Column(Integer, nullable=True)
+
     discriminator = Column('type', String(30))
     __mapper_args__ = {'polymorphic_on': discriminator,
                        'polymorphic_identity': 'event'}
@@ -268,6 +272,7 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         self.last_modified = event.last_modified
         self.message = event.message
         self.status = event.status
+        self.sequence_number = event.sequence_number
 
     @property
     def recurring(self):

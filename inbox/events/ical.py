@@ -214,6 +214,7 @@ def events_from_ics(namespace, calendar, ics_str):
 
             location = component.get('location')
             uid = str(component.get('uid'))
+            sequence_number = int(component.get('sequence'))
 
             event = Event(
                 namespace=namespace,
@@ -236,6 +237,7 @@ def events_from_ics(namespace, calendar, ics_str):
                 original_start_tz=original_start_tz,
                 source='local',
                 status=event_status,
+                sequence_number=sequence_number,
                 participants=participants)
 
             events.append(event)
@@ -279,8 +281,10 @@ def import_attached_events(db_session, account, message):
         new_uids = [event.uid for event in new_events]
 
         # Get the list of events which share a uid with those we received.
+        # Note that we're not limiting this query to events in the
+        # "Emailed events" calendar because we may have received RSVPs to
+        # an invite we previously sent.
         existing_events = db_session.query(Event).filter(
-            Event.calendar_id == account.emailed_events_calendar.id,
             Event.namespace_id == account.namespace.id,
             Event.uid.in_(new_uids)).all()
 
@@ -299,7 +303,7 @@ def import_attached_events(db_session, account, message):
                 # Let's see if the version we have is older or newer.
                 existing_event = existing_events_table[event.uid]
 
-                if event.last_modified > existing_event.last_modified:
+                if existing_event.sequence_number <= event.sequence_number:
                     # Most RSVP replies only contain the status of the person
                     # replying. We need to merge the reply with the data we
                     # already have otherwise we'd be losing information.
@@ -321,21 +325,18 @@ def import_attached_events(db_session, account, message):
                     # not register changes to nested elements.
                     # We could probably change MutableList to handle it (see:
                     # https://groups.google.com/d/msg/sqlalchemy/i2SIkLwVYRA/mp2WJFaQxnQJ)
-                    # but this sounds a very brittle.
+                    # but this sounds very brittle.
                     existing_event.participants = []
                     for participant in merged_participants:
                         existing_event.participants.append(participant)
-                else:
-                    # This is an older message but it still may contain
-                    # valuable RSVP information --- remember that when someone
-                    # RSVPs, the event's participant list often only
-                    # contains the RSVPing person.
-                    merged_participants = existing_event.\
-                        _partial_participants_merge(event)
 
-                    existing_event.participants = []
-                    for participant in merged_participants:
-                        existing_event.participants.append(participant)
+                    # Gmail handles RSVPs itself. Otherwise, we need to sync
+                    # back the changes.
+                    if account.provider != 'gmail' and \
+                       existing_event.calendar !=  account.emailed_events_calendar:
+                        schedule_action('update_event', existing_event,
+                                        existing_event.namespace.id, db_session,
+                                        calendar_uid=event.calendar.uid)
 
 
 def _generate_individual_rsvp(message, status, account, ical_str):
@@ -549,11 +550,11 @@ def generate_icalendar_invite(event):
         attendees.append(attendee)
 
     # The organizer needs to be listed as an attendee too
-    #organizer_attendee = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
-    #organizer_attendee.params['ROLE'] = 'REQ-PARTICIPANT'
-    #organizer_attendee.params['PARTSTAT'] = 'ACCEPTED'
-    #organizer_attendee.params['CN'] = account.name
-    #attendees.append(organizer_attendee)
+    organizer_attendee = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
+    organizer_attendee.params['ROLE'] = 'REQ-PARTICIPANT'
+    organizer_attendee.params['PARTSTAT'] = 'ACCEPTED'
+    organizer_attendee.params['CN'] = account.name
+    attendees.append(organizer_attendee)
 
     if attendees != []:
         icalendar_event.add('ATTENDEE', attendees)
@@ -582,7 +583,7 @@ def send_invite(ical_txt, event, account):
     #                 disposition='attachment')
 
     msg.append(body)
-    # msg.append(attachment)
+    #msg.append(attachment)
 
     msg.headers['Reply-To'] = account.email_address
     msg.headers['From'] = account.email_address
@@ -594,5 +595,5 @@ def send_invite(ical_txt, event, account):
             continue
 
         msg.headers['To'] = email
-        final_message = msg.to_string().replace('method=request', 'method=REQUEST')
+        final_message = msg.to_string()
         sendmail_client._send([email], final_message)
