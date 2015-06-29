@@ -338,7 +338,7 @@ def import_attached_events(db_session, account, message):
                         existing_event.participants.append(participant)
 
 
-def _generate_individual_rsvp(message, status, account_email, account_name,
+def _generate_individual_rsvp(status, account_email, account_name,
                               ical_str):
     cal = iCalendar.from_ical(ical_str)
 
@@ -356,6 +356,7 @@ def _generate_individual_rsvp(message, status, account_email, account_name,
     summary = None
     transp = None
     timezone = None
+    sequence = None
 
     number_of_vevent_sections = 0
     for component in cal.walk():
@@ -379,6 +380,7 @@ def _generate_individual_rsvp(message, status, account_email, account_name,
             location = component.get('location')
             summary = component.get('summary')
             transp = component.get('transp')
+            sequence = component.get('sequence')
 
             number_of_vevent_sections += 1
 
@@ -406,7 +408,7 @@ def _generate_individual_rsvp(message, status, account_email, account_name,
     event['uid'] = str(uid)
     event['organizer'] = organizer
 
-    event['sequence'] = 0
+    event['sequence'] = sequence 
     event['X-MICROSOFT-CDO-APPT-SEQUENCE'] = event['sequence']
 
     event['status'] = 'CONFIRMED'
@@ -444,7 +446,7 @@ def generate_rsvp(message, participant, account_email, account_name):
         # Note: we return as soon as we've found an iCalendar file because
         # most invite emails contain multiple copies of the same file, in the
         # body and as an attachment.
-        rsvp = _generate_individual_rsvp(message, status, account_email,
+        rsvp = _generate_individual_rsvp(status, account_email,
                                          account_name, part.block.data)
         if rsvp is not None:
             return rsvp
