@@ -338,7 +338,8 @@ def import_attached_events(db_session, account, message):
                         existing_event.participants.append(participant)
 
 
-def _generate_individual_rsvp(message, status, account, ical_str):
+def _generate_individual_rsvp(message, status, account_email, account_name,
+                              ical_str):
     cal = iCalendar.from_ical(ical_str)
 
     # It seems that Google Calendar requires us to copy a number of fields
@@ -369,7 +370,7 @@ def _generate_individual_rsvp(message, status, account, ical_str):
             timezone = component
 
         if component.name == "VEVENT":
-            uid = str(component.get('uid'))
+            uid = component.get('uid')
             organizer = component.get('organizer')
             start = component.get('dtstart')
             end = component.get('dtend')
@@ -385,7 +386,7 @@ def _generate_individual_rsvp(message, status, account, ical_str):
     # multiple events.
     if number_of_vevent_sections != 1:
         log.error('number_of_vevent_sections != 1',
-                  number=number_of_vevent_sections, account_id=account.id,
+                  number=number_of_vevent_sections, email=account_email,
                   ical_str=ical_str)
         return None
 
@@ -402,7 +403,7 @@ def _generate_individual_rsvp(message, status, account, ical_str):
         cal.add_component(timezone)
 
     event = icalendar.Event()
-    event['uid'] = uid
+    event['uid'] = str(uid)
     event['organizer'] = organizer
 
     event['sequence'] = 0
@@ -419,8 +420,8 @@ def _generate_individual_rsvp(message, status, account, ical_str):
     event['summary'] = summary
     event['transp'] = transp
 
-    attendee = icalendar.vCalAddress('MAILTO:{}'.format(account.email_address))
-    attendee.params['cn'] = account.name
+    attendee = icalendar.vCalAddress('MAILTO:{}'.format(account_email))
+    attendee.params['cn'] = account_name
     attendee.params['partstat'] = status
     event.add('attendee', attendee, encode=0)
     cal.add_component(event)
@@ -436,15 +437,15 @@ def _generate_individual_rsvp(message, status, account, ical_str):
     return ret
 
 
-def generate_rsvp(message, data, account):
+def generate_rsvp(message, participant, account_email, account_name):
     # Generates an iCalendar file to RSVP to an invite.
-    status = INVERTED_STATUS_MAP.get(data["status"])
+    status = INVERTED_STATUS_MAP.get(participant["status"])
     for part in message.attached_event_files:
         # Note: we return as soon as we've found an iCalendar file because
         # most invite emails contain multiple copies of the same file, in the
         # body and as an attachment.
-        rsvp = _generate_individual_rsvp(message, status, account,
-                                         part.block.data)
+        rsvp = _generate_individual_rsvp(message, status, account_email,
+                                         account_name, part.block.data)
         if rsvp is not None:
             return rsvp
 

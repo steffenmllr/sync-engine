@@ -707,6 +707,8 @@ def event_update_api(public_id):
         raise InputError('Cannot update read_only event.')
 
     data = request.get_json(force=True)
+    account = g.namespace.account
+
     valid_event_update(data, g.namespace, g.db_session)
 
     if 'participants' in data:
@@ -719,8 +721,12 @@ def event_update_api(public_id):
             setattr(event, attr, data[attr])
 
     g.db_session.commit()
-    schedule_action('update_event', event, g.namespace.id, g.db_session,
-                    calendar_uid=event.calendar.uid)
+
+    # Don't sync back updates to autoimported events.
+    if event.calendar != account.emailed_events_calendar:
+        schedule_action('update_event', event, g.namespace.id, g.db_session,
+                        calendar_uid=event.calendar.uid)
+
     return g.encoder.jsonify(event)
 
 
@@ -780,7 +786,8 @@ def event_rsvp_api(public_id):
         raise InputError('Invalid status %s' % participant['status'])
 
     body_text = participant.get('comment', '')
-    ical_data = generate_rsvp(event.message, participant, account)
+    ical_data = generate_rsvp(event.message, participant,
+                              account.email_address, account.name)
 
     if ical_data is None:
         raise APIException("Couldn't parse the attached iCalendar invite")
@@ -795,7 +802,7 @@ def event_rsvp_api(public_id):
             kwargs['server_error'] = exc.server_error
         return err(exc.http_code, exc.message, **kwargs)
 
-    return g.encoder.jsonify(None)
+    return g.encoder.jsonify(event)
 
 
 #
