@@ -36,6 +36,7 @@ from inbox.models.action_log import schedule_action, ActionError
 from inbox.models.session import InboxSession
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
+from inbox.events.google import GoogleEventsProvider
 from inbox.events.ical import (generate_rsvp, send_rsvp,
                                generate_icalendar_invite, send_invite)
 
@@ -818,7 +819,7 @@ def event_invite_api(public_id):
             kwargs['server_error'] = exc.server_error
         return err(exc.http_code, exc.message, **kwargs)
 
-    return g.encoder.jsonify(None)
+    return g.encoder.jsonify(event)
 
 #
 # Files

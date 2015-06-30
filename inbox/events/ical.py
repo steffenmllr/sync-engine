@@ -13,6 +13,7 @@ from timezones import timezones_table
 from inbox.models.event import Event, EVENT_STATUSES
 from inbox.events.util import MalformedEventError
 from inbox.util.addr import canonicalize_address
+from inbox.models.action_log import schedule_action
 
 from inbox.log import get_logger
 log = get_logger()
@@ -31,7 +32,7 @@ def events_from_ics(namespace, calendar, ics_str):
     except (ValueError, IndexError, KeyError):
         raise MalformedEventError()
 
-    events = []
+    events = dict(invites=[], rsvps=[])
 
     # See: https://tools.ietf.org/html/rfc5546#section-3.2
     calendar_method = None
@@ -214,6 +215,9 @@ def events_from_ics(namespace, calendar, ics_str):
 
             location = component.get('location')
             uid = str(component.get('uid'))
+            if '@nylas.com' in uid:
+                uid = uid[:-10]
+
             sequence_number = int(component.get('sequence'))
 
             event = Event(
@@ -240,8 +244,101 @@ def events_from_ics(namespace, calendar, ics_str):
                 sequence_number=sequence_number,
                 participants=participants)
 
-            events.append(event)
+            if calendar_method == 'REQUEST' or calendar_method == 'CANCEL':
+                events['invites'].append(event)
+            elif calendar_method == 'REPLY':
+                events['rsvps'].append(event)
+
     return events
+
+def process_invites(db_session, message, account, invites):
+    # Check db if the invite alread
+    new_uids = [event.uid for event in invites]
+
+    # Get the list of events which share a uid with those we received.
+    # Note that we're limiting this query to events in the 'emailed events'
+    # calendar, because that's where all the invites go.
+    existing_events = db_session.query(Event).filter(
+        Event.calendar_id == account.emailed_events_calendar_id,
+        Event.namespace_id == account.namespace.id,
+        Event.uid.in_(new_uids)).all()
+
+    existing_events_table = {event.uid: event for event in existing_events}
+    for event in invites:
+        if event.uid not in existing_events_table:
+            # This is some SQLAlchemy trickery -- the events returned
+            # by events_from_ics aren't bound to a session. Because of
+            # this, we don't care if they get garbage-collected.
+            # By associating the event to the message we make sure it
+            # will be flushed to the db.
+            event.calendar = account.emailed_events_calendar
+            event.message = message
+        else:
+            # This is an event we already have in the db.
+            # Let's see if the version we have is older or newer.
+            existing_event = existing_events_table[event.uid]
+
+            if existing_event.sequence_number <= event.sequence_number:
+                merged_participants = existing_event.\
+                    _partial_participants_merge(event)
+
+                existing_event.update(event)
+                existing_event.message = message
+
+                # We have to do this mumbo-jumbo because MutableList does
+                # not register changes to nested elements.
+                # We could probably change MutableList to handle it (see:
+                # https://groups.google.com/d/msg/sqlalchemy/i2SIkLwVYRA/mp2WJFaQxnQJ)
+                # but this sounds very brittle.
+                existing_event.participants = []
+                for participant in merged_participants:
+                    existing_event.participants.append(participant)
+
+
+def process_rsvps(db_session, message, account, rsvps):
+    new_uids = [event.uid for event in rsvps]
+
+    # Get the list of events which share a uid with those we received.
+    # Note that we're not limiting this query to events in the
+    # "Emailed events" calendar because we may have received RSVPs to
+    # an invite we previously sent.
+    existing_events = db_session.query(Event).filter(
+        Event.namespace_id == account.namespace.id,
+        Event.calendar_id != account.emailed_events_calendar_id,
+        Event.public_id.in_(new_uids)).all()
+
+    existing_events_table = {event.public_id: event for event in existing_events}
+    for event in rsvps:
+        if event.uid not in existing_events_table:
+            # We've received an RSVP to an event we never heard about. Save it,
+            # maybe we'll sync the invite later.
+            event.calendar = account.emailed_events_calendar
+            event.message = message
+        else:
+            # This is an event we already have in the db.
+            # Let's see if the version we have is older or newer.
+            existing_event = existing_events_table[event.uid]
+
+            if existing_event.sequence_number == event.sequence_number:
+                merged_participants = existing_event.\
+                    _partial_participants_merge(event)
+
+                # We have to do this mumbo-jumbo because MutableList does
+                # not register changes to nested elements.
+                # We could probably change MutableList to handle it (see:
+                # https://groups.google.com/d/msg/sqlalchemy/i2SIkLwVYRA/mp2WJFaQxnQJ)
+                # but it seems very brittle.
+                existing_event.participants = []
+                for participant in merged_participants:
+                    existing_event.participants.append(participant)
+
+                # We need to sync back changes to the event manually
+                if existing_event.calendar != account.emailed_events_calendar:
+                    schedule_action('update_event', existing_event,
+                                    existing_event.namespace.id, db_session,
+                                    calendar_uid=existing_event.calendar.uid)
+
+                db_session.flush()
 
 
 def import_attached_events(db_session, account, message):
@@ -278,65 +375,16 @@ def import_attached_events(db_session, account, message):
                                     sys.exc_info()[2]))
             continue
 
-        new_uids = [event.uid for event in new_events]
+        process_invites(db_session, message, account, new_events['invites'])
 
-        # Get the list of events which share a uid with those we received.
-        # Note that we're not limiting this query to events in the
-        # "Emailed events" calendar because we may have received RSVPs to
-        # an invite we previously sent.
-        existing_events = db_session.query(Event).filter(
-            Event.namespace_id == account.namespace.id,
-            Event.uid.in_(new_uids)).all()
-
-        existing_events_table = {event.uid: event for event in existing_events}
-
-        for event in new_events:
-            if event.uid not in existing_events_table:
-                # This is some SQLAlchemy trickery -- the events returned
-                # by events_from_ics aren't bound to a session. Because of
-                # this, we don't care if they get garbage-collected.
-                # By associating the event to the message we make sure it
-                # will be flushed to the db.
-                event.message = message
-            else:
-                # This is an event we already have in the db.
-                # Let's see if the version we have is older or newer.
-                existing_event = existing_events_table[event.uid]
-
-                if existing_event.sequence_number <= event.sequence_number:
-                    # Most RSVP replies only contain the status of the person
-                    # replying. We need to merge the reply with the data we
-                    # already have otherwise we'd be losing information.
-                    merged_participants = existing_event.\
-                        _partial_participants_merge(event)
-
-                    # FIXME: What we really should do here is distinguish
-                    # between the case where we're organizing an event and
-                    # receiving RSVP messages and the case where we're just an
-                    # attendant getting updates from the organizer.
-                    #
-                    # We don't store (yet) information about the organizer so
-                    # we assume we're the creator of the event. We'll do soon
-                    # though.
-                    existing_event.update(event)
-                    existing_event.message = message
-
-                    # We have to do this mumbo-jumbo because MutableList does
-                    # not register changes to nested elements.
-                    # We could probably change MutableList to handle it (see:
-                    # https://groups.google.com/d/msg/sqlalchemy/i2SIkLwVYRA/mp2WJFaQxnQJ)
-                    # but this sounds very brittle.
-                    existing_event.participants = []
-                    for participant in merged_participants:
-                        existing_event.participants.append(participant)
-
-                    # Gmail handles RSVPs itself. Otherwise, we need to sync
-                    # back the changes.
-                    if account.provider != 'gmail' and \
-                       existing_event.calendar !=  account.emailed_events_calendar:
-                        schedule_action('update_event', existing_event,
-                                        existing_event.namespace.id, db_session,
-                                        calendar_uid=event.calendar.uid)
+        # Gmail has a very very annoying feature: it doesn't use email to RSVP
+        # to an invite sent by another gmail account. This makes it impossible
+        # for us to update the event correctly. To work around this, we let
+        # Google calendar send invites on our behalf. Of course, we handle
+        # this ourselves for the other providers.
+        # - karim
+        if account.provider != 'gmail':
+            process_rsvps(db_session, message, account, new_events['rsvps'])
 
 
 def _generate_individual_rsvp(message, status, account, ical_str):
@@ -489,6 +537,12 @@ def send_rsvp(ical_data, event, body_text, account):
 
 def generate_icalendar_invite(event):
     # Generates an iCalendar invite from an event.
+
+    if event.sequence_number is None:
+        event.sequence_number = 0
+    else:
+        event.sequence_number += 1
+
     cal = iCalendar()
     cal.add('PRODID', '-//Nylas sync engine//nylas.com//')
     cal.add('METHOD', 'REQUEST')
@@ -497,15 +551,20 @@ def generate_icalendar_invite(event):
 
     icalendar_event = icalendar.Event()
 
-    icalendar_event['uid'] = "{}@nylas.com".format(event.public_id)
 
     account = event.namespace.account
-    organizer = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
+
+    if account.provider == 'gmail':
+        organizer = icalendar.vCalAddress("MAILTO:{}".format(event.calendar.uid))
+        icalendar_event['uid'] = "{}@google.com".format(event.uid)
+    else:
+        organizer = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
+        icalendar_event['uid'] = "{}@nylas.com".format(event.public_id)
     if account.name is not None:
         organizer.params['CN'] = account.name
 
     icalendar_event['organizer'] = organizer
-    icalendar_event['sequence'] = 0
+    icalendar_event['sequence'] = event.sequence_number
     icalendar_event['X-MICROSOFT-CDO-APPT-SEQUENCE'] = icalendar_event['sequence']
     icalendar_event['status'] = 'CONFIRMED'
     icalendar_event['last-modified'] = serialize_datetime(event.updated_at)
@@ -585,8 +644,11 @@ def send_invite(ical_txt, event, account):
     msg.append(body)
     #msg.append(attachment)
 
-    msg.headers['Reply-To'] = account.email_address
     msg.headers['From'] = account.email_address
+        msg.headers['Reply-To'] = event.calendar.uid # account.email_address
+    else:
+        msg.headers['Reply-To'] = account.email_address
+
     msg.headers['Subject'] = "Invite: {}".format(event.title)
 
     for participant in event.participants:

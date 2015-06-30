@@ -169,20 +169,23 @@ class GoogleEventsProvider(object):
                             **kwargs):
         """Makes a POST/PUT/DELETE request for a particular event."""
         event_uid = event_uid or ''
+        print kwargs.get('params')
         url = 'https://www.googleapis.com/calendar/v3/' \
               'calendars/{}/events/{}'.format(urllib.quote(calendar_uid),
                                               urllib.quote(event_uid))
         token = self._get_access_token()
         r = requests.request(method, url, auth=OAuth(token), **kwargs)
+        print r.url
+        print r
         r.raise_for_status()
         return r
 
     def create_remote_event(self, event):
         data = _dump_event(event)
-        r = self._make_event_request('post', event.calendar.uid, json=data, params={'sendNotifications': 'true'})
+        r = self._make_event_request('post', event.calendar.uid, json=data)
         return r.json()
 
-    def update_remote_event(self, event):
+    def update_remote_event(self, event, send_invites=False):
         data = _dump_event(event)
         self._make_event_request('put', event.calendar.uid, event.uid,
                                  json=data)

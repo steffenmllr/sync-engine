@@ -209,8 +209,8 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
         # hash only if the email is None.
         self_hash = {}
         for participant in self.participants:
-            email = participant['email']
-            name = participant['name']
+            email = participant.get('email')
+            name = participant.get('name')
             if email is not None:
                 self_hash[email] = participant
             elif name is not None:
@@ -218,8 +218,8 @@ class Event(MailSyncBase, HasRevisions, HasPublicID):
                 self_hash[name] = participant
 
         for participant in event.participants:
-            email = participant['email']
-            name = participant['name']
+            email = participant.get('email')
+            name = participant.get('name')
 
             # This is the tricky part --- we only want to store one entry per
             # participant --- we check if there's an email we already know, if
