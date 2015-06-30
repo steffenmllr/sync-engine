@@ -36,9 +36,7 @@ from inbox.models.action_log import schedule_action, ActionError
 from inbox.models.session import InboxSession
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
-from inbox.events.google import GoogleEventsProvider
-from inbox.events.ical import (generate_rsvp, send_rsvp,
-                               generate_icalendar_invite, send_invite)
+from inbox.events.ical import (generate_icalendar_invite, send_invite)
 
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            ConflictError)
@@ -747,54 +745,6 @@ def event_delete_api(public_id):
     return g.encoder.jsonify(None)
 
 
-@app.route('/events/<public_id>/rsvp', methods=['POST'])
-def event_rsvp_api(public_id):
-    # This API uses a POST because we can't guarantee idempotency.
-    valid_public_id(public_id)
-    try:
-        event = g.db_session.query(Event).filter(
-            Event.public_id == public_id,
-            Event.namespace_id == g.namespace.id).one()
-    except NoResultFound:
-        raise NotFoundError("Couldn't find event {0}".format(public_id))
-    if event.message is None:
-        raise InputError('This is not a message imported '
-                         'from an iCalendar invite.')
-
-    data = request.get_json(force=True)
-
-    # Note: this assumes that the email invite was directly addressed to us
-    # (i.e: that there's no email alias to redirect ben.bitdiddle@nylas
-    #  to ben@nylas.)
-    addresses = [p["email"] for p in event.participants]
-
-    account = g.namespace.account
-    email = account.email_address
-    if email not in addresses:
-        raise InputError('Cannot find the %s among the participants' % email)
-
-    if 'status' not in data:
-        raise InputError('Cannot RSVP to an event without a status')
-
-    if data['status'] not in ['yes', 'no', 'maybe']:
-        raise InputError('Invalid status')
-
-    body_text = data.get('comment', '')
-    ical_data = generate_rsvp(event.message, data, account)
-
-    try:
-        send_rsvp(ical_data, event, body_text, account)
-    except SendMailException as exc:
-        kwargs = {}
-        if exc.failures:
-            kwargs['failures'] = exc.failures
-        if exc.server_error:
-            kwargs['server_error'] = exc.server_error
-        return err(exc.http_code, exc.message, **kwargs)
-
-    return g.encoder.jsonify(None)
-
-
 @app.route('/events/<public_id>/invite', methods=['GET'])
 def event_invite_api(public_id):
     # This API uses a POST because we can't guarantee idempotency.
@@ -820,6 +770,7 @@ def event_invite_api(public_id):
         return err(exc.http_code, exc.message, **kwargs)
 
     return g.encoder.jsonify(event)
+
 
 #
 # Files

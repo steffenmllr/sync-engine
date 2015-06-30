@@ -15,7 +15,8 @@ import sqlalchemy as sa
 
 
 def upgrade():
-    op.add_column('event', sa.Column('sequence_number', sa.Integer(), nullable=True))
+    op.add_column('event', sa.Column('sequence_number', sa.Integer(),
+                                     nullable=True, server_default='0'))
 
 
 def downgrade():
