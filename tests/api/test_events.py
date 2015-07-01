@@ -210,13 +210,8 @@ def test_api_update_read_only(db, api_client, calendar, default_namespace):
     assert e_put_resp.status_code != 200
 
 
-<<<<<<< HEAD
-# Filtering by description is temporarily broken (and of dubious value at best)
-@pytest.mark.skipif(True, reason='filtering temporarily limited')
-=======
 # TODO(emfree) setup expected test data
 @pytest.mark.xfail
->>>>>>> master
 def test_api_filter(db, api_client, calendar):
     # Events in database:
     # description: data1
