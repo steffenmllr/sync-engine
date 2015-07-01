@@ -10,7 +10,6 @@ Create Date: 2015-06-29 14:56:45.745668
 revision = '606447e78e7'
 down_revision = '41f957b595fc'
 
-import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.sql import text
 
@@ -23,4 +22,4 @@ def upgrade():
 
 
 def downgrade():
-    op.add_column('event', 'sequence_number')
+    op.drop_column('event', 'sequence_number')

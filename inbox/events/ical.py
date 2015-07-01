@@ -1,6 +1,5 @@
 import sys
 import pytz
-import uuid
 import arrow
 import traceback
 import icalendar

@@ -150,7 +150,7 @@ CREATE TABLE `alembic_version` (
 
 LOCK TABLES `alembic_version` WRITE;
 /*!40000 ALTER TABLE `alembic_version` DISABLE KEYS */;
-INSERT INTO `alembic_version` VALUES ('6e5b154d917');
+INSERT INTO `alembic_version` VALUES ('606447e78e7');
 /*!40000 ALTER TABLE `alembic_version` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -296,6 +296,41 @@ LOCK TABLES `contact` WRITE;
 /*!40000 ALTER TABLE `contact` DISABLE KEYS */;
 INSERT INTO `contact` VALUES (1,'ÔøΩZÔøΩzoÔøΩL?Ôø','ac99aa06-5604-4234-9ccc-dfb5f41973d1','inbox','local','',NULL,24,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'inboxapptest@gmail.com','inboxapptest@gmail.com',1),(2,'ÔøΩ6\",NA@ÔøΩÔøΩÔ','523f7769-c26e-4728-921d-ffd43e5bb1b4','inbox','local','Ben Bitdiddle',NULL,10,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'benbitdiddle1861@gmail.com','benbitdiddle1861@gmail.com',1),(3,'ÔøΩ4ÔøΩ-;KÔøΩÔø','0ff75111-5a72-46a4-a0d0-d1d189422117','inbox','local','Paul Tiseo',NULL,10,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'paulxtiseo@gmail.com','paulxtiseo@gmail.com',1),(4,'ÔøΩÔøΩÔøΩ&mN@ÔøΩ','6840fd76-34e3-4b1a-b0a3-6b797bbf92d7','inbox','local','golang-nuts',NULL,9,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'golang-nuts@googlegroups.com','golang-nuts@googlegroups.com',1),(5,'ÔøΩ`<]JÔøΩÔøΩ','31d28d81-67df-479b-ae79-6f19589a88dd','inbox','local','Gmail Team',NULL,9,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'mail-noreply@google.com','mail-noreply@google.com',1),(6,'\\ÔøΩ#eÔøΩHxÔøΩÔ','c0849c30-e29d-4404-b931-ddf9c3d06201','inbox','local','Christine Spang',NULL,9,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'christine@spang.cc','christine@spang.cc',1),(7,'ÔøΩÔøΩ>J0ÔøΩ','94d616ac-3963-442a-9d05-b88d43a94758','inbox','local','',NULL,9,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'no-reply@accounts.google.com','no-reply@accounts.google.com',1),(8,'amXÔøΩT@¬ò6ÔøΩ>','47c6565a-2c8e-49a5-a32c-9a7aff921248','inbox','local','kavya joshi',NULL,9,'2014-05-13 02:19:12','2014-05-13 02:19:12',NULL,'kavya719@gmail.com','kavya719@gmail.com',1);
 /*!40000 ALTER TABLE `contact` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `dataprocessingcache`
+--
+
+DROP TABLE IF EXISTS `dataprocessingcache`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `dataprocessingcache` (
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `namespace_id` int(11) NOT NULL,
+  `contact_rankings` mediumblob,
+  `contact_groups` mediumblob,
+  `contact_rankings_last_updated` datetime DEFAULT NULL,
+  `contact_groups_last_updated` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `namespace_id` (`namespace_id`),
+  KEY `ix_dataprocessingcache_created_at` (`created_at`),
+  KEY `ix_dataprocessingcache_deleted_at` (`deleted_at`),
+  KEY `ix_dataprocessingcache_updated_at` (`updated_at`),
+  CONSTRAINT `dataprocessingcache_ibfk_1` FOREIGN KEY (`namespace_id`) REFERENCES `namespace` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `dataprocessingcache`
+--
+
+LOCK TABLES `dataprocessingcache` WRITE;
+/*!40000 ALTER TABLE `dataprocessingcache` DISABLE KEYS */;
+/*!40000 ALTER TABLE `dataprocessingcache` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -621,6 +656,7 @@ CREATE TABLE `event` (
   `message_id` int(11) DEFAULT NULL,
   `status` enum('tentative','confirmed','cancelled') DEFAULT 'confirmed',
   `owner2` varchar(1024) DEFAULT NULL,
+  `sequence_number` int(11) DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `event_ibfk_2` (`calendar_id`),
   KEY `namespace_id` (`namespace_id`),
@@ -638,7 +674,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','inbox','p5ßë‹\rD_∂Î ä@Ø◊˝','','desc1','data1','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-02-01 00:00:01',0,'local','2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,1,0,1,'[]',NULL,'event',NULL,'confirmed',NULL),(2,'b9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπ‡FcÕVø\n','','desc2','data2','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-01-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1,1,'[]',NULL,'event',NULL,'confirmed',NULL),(3,'c9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπjFcÕVø\n','','desc5','data3','InboxHeadquarters',1,NULL,NULL,'1970-02-01 00:00:01','1970-03-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1,1,'[]',NULL,'event',NULL,'confirmed',NULL);
+INSERT INTO `event` VALUES (1,'3bd5983f9d1748d0bca5719c57f72815','inbox','p5ßë‹\rD_∂Î ä@Ø◊˝','','desc1','data1','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-02-01 00:00:01',0,'local','2014-08-29 01:22:53','2014-08-29 01:22:53',NULL,1,NULL,1,0,1,'[]',NULL,'event',NULL,'confirmed',NULL,0),(2,'b9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπ‡FcÕVø\n','','desc2','data2','InboxHeadquarters',1,NULL,NULL,'1970-01-01 00:00:01','1970-01-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,2,NULL,1,1,1,'[]',NULL,'event',NULL,'confirmed',NULL,0),(3,'c9f18495985f4814a95e28f3e119a730','inbox','◊éÌv‘êAπjFcÕVø\n','','desc5','data3','InboxHeadquarters',1,NULL,NULL,'1970-02-01 00:00:01','1970-03-01 00:00:01',0,'local','2014-08-29 01:22:54','2014-08-29 01:22:54',NULL,1,NULL,1,1,1,'[]',NULL,'event',NULL,'confirmed',NULL,0);
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1873,4 +1909,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2015-06-03  2:44:22
+-- Dump completed on 2015-07-01 15:33:34

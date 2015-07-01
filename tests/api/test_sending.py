@@ -156,6 +156,28 @@ def example_draft_bad_body(db):
     }
 
 
+@pytest.fixture
+def example_event(db, api_client):
+    from inbox.models.calendar import Calendar
+    cal = db.session.query(Calendar).get(1)
+
+    event = {
+        'title': 'Invite test',
+        'when': {
+            "end_time": 1436210662,
+            "start_time": 1436207062
+        },
+        'participants': [
+            {'email': 'helena@nylas.com'}
+        ],
+        'calendar_id': cal.public_id,
+    }
+
+    r = api_client.post_data('/events', event)
+    event_public_id = json.loads(r.data)['id']
+    return event_public_id
+
+
 def test_send_existing_draft(patch_smtp, api_client, example_draft):
     r = api_client.post_data('/drafts', example_draft)
     draft_public_id = json.loads(r.data)['id']
@@ -455,3 +477,41 @@ def test_sending_from_email_multiple_aliases(patch_smtp, patch_token_manager,
                                 'subject': 'Banalities',
                                 'body': '<html>Hello there</html>'})
     assert res.status_code == 400
+
+
+def test_handle_invite_quota_exceeded(quota_exceeded, api_client,
+                                      example_event):
+    path = "/events/{}/invite".format(example_event)
+    r = api_client.post_data(path, None)
+
+    assert r.status_code == 429
+    assert json.loads(r.data)['message'] == 'Daily sending quota exceeded'
+
+
+def test_handle_invite_invalid_credentials(disallow_auth, api_client,
+                                           example_event):
+    path = "/events/{}/invite".format(example_event)
+    r = api_client.post_data(path, None)
+
+    assert r.status_code == 403
+    assert json.loads(r.data)['message'] == 'Could not authenticate with ' \
+                                            'the SMTP server.'
+
+
+def test_handle_invite_server_disconnected(connection_closed, api_client,
+                                           example_event):
+    path = "/events/{}/invite".format(example_event)
+    r = api_client.post_data(path, None)
+
+    assert r.status_code == 503
+    assert json.loads(r.data)['message'] == 'The server unexpectedly closed ' \
+                                            'the connection'
+
+
+def test_handle_invite_recipients_rejected(recipients_refused, api_client,
+                                           example_event):
+    path = "/events/{}/invite".format(example_event)
+    r = api_client.post_data(path, None)
+
+    assert r.status_code == 402
+    assert json.loads(r.data)['message'] == 'Sending to all recipients failed'
