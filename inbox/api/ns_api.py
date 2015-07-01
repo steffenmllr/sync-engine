@@ -745,7 +745,7 @@ def event_delete_api(public_id):
     return g.encoder.jsonify(None)
 
 
-@app.route('/events/<public_id>/invite', methods=['GET'])
+@app.route('/events/<public_id>/invite', methods=['POST'])
 def event_invite_api(public_id):
     # This API uses a POST because we can't guarantee idempotency.
     valid_public_id(public_id)

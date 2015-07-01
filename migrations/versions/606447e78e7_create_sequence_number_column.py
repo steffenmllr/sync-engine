@@ -10,13 +10,16 @@ Create Date: 2015-06-29 14:56:45.745668
 revision = '606447e78e7'
 down_revision = '41f957b595fc'
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.sql import text
 
 
 def upgrade():
-    op.add_column('event', sa.Column('sequence_number', sa.Integer(),
-                                     nullable=True, server_default='0'))
+    conn = op.get_bind()
+    conn.execute(text("set @@lock_wait_timeout = 20;"))
+    conn.execute(text("ALTER TABLE event ADD COLUMN sequence_number int(11) DEFAULT '0', "
+                      "ALGORITHM=inplace,LOCK=none"))
 
 
 def downgrade():

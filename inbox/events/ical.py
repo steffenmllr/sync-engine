@@ -480,7 +480,6 @@ def send_invite(ical_txt, event, account):
     from inbox.sendmail.base import get_sendmail_client
     sendmail_client = get_sendmail_client(account)
 
-    body_text = "BODY TEXT"
     msg = mime.create.multipart('mixed')
 
     body = mime.create.multipart('alternative')
@@ -489,14 +488,14 @@ def send_invite(ical_txt, event, account):
         mime.create.text('html', ''),
         mime.create.text('calendar; method=REQUEST', ical_txt, charset='utf8'))
 
-    #attachment = mime.create.attachment(
-    #                 'application/ics',
-    #                 ical_txt,
-    #                 'invite.ics',
-    #                 disposition='attachment')
+    attachment = mime.create.attachment(
+                     'application/ics',
+                     ical_txt,
+                     'invite.ics',
+                     disposition='attachment')
 
     msg.append(body)
-    #msg.append(attachment)
+    msg.append(attachment)
 
     msg.headers['From'] = account.email_address
     if account.provider == 'gmail':
@@ -513,4 +512,4 @@ def send_invite(ical_txt, event, account):
 
         msg.headers['To'] = email
         final_message = msg.to_string()
-        sendmail_client._send([email], final_message)
+        sendmail_client.send_generated_email([email], final_message)
