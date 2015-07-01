@@ -12,9 +12,9 @@ from flask.ext.restful import reqparse
 from sqlalchemy import asc, or_, func
 from sqlalchemy.orm.exc import NoResultFound
 
-from inbox.models.session import session_scope
 from inbox.models import (Message, Block, Part, Thread, Namespace,
-                          Tag, Contact, Calendar, Event, Transaction)
+                          Tag, Contact, Calendar, Event, Transaction,
+                          DataProcessingCache)
 from inbox.api.sending import send_draft, send_raw_mime
 from inbox.api.kellogs import APIEncoder
 from inbox.api import filtering
@@ -27,13 +27,16 @@ from inbox.api.validation import (get_tags, get_attachments, get_calendar,
                                   validate_search_query,
                                   validate_search_sort,
                                   valid_delta_object_types)
+from inbox.contacts.algorithms import (calculate_contact_scores,
+                                       calculate_group_scores,
+                                       calculate_group_counts, is_stale)
 import inbox.contacts.crud
 from inbox.sendmail.base import (create_draft, update_draft, delete_draft,
                                  create_draft_from_mime)
 from inbox.log import get_logger
 from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.models.action_log import schedule_action
-from inbox.models.session import InboxSession
+from inbox.models.session import InboxSession, session_scope
 from inbox.search.adaptor import NamespaceSearchEngine, SearchEngineError
 from inbox.transactions import delta_sync
 
@@ -458,7 +461,9 @@ def message_query_api():
         view=args['view'],
         db_session=g.db_session)
 
-    return g.encoder.jsonify(messages)
+    # Use a new encoder object with the expand parameter set.
+    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
+    return encoder.jsonify(messages)
 
 
 @app.route('/messages/search', methods=['POST'])
@@ -485,8 +490,11 @@ def message_search_api():
     return g.encoder.jsonify(results)
 
 
-@app.route('/messages/<public_id>', methods=['GET', 'PUT'])
-def message_api(public_id):
+@app.route('/messages/<public_id>', methods=['GET'])
+def message_read_api(public_id):
+    g.parser.add_argument('view', type=view, location='args')
+    args = strict_parse_args(g.parser, request.args)
+    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
     try:
         valid_public_id(public_id)
         message = g.db_session.query(Message).filter(
@@ -494,30 +502,47 @@ def message_api(public_id):
             Message.namespace_id == g.namespace.id).one()
     except NoResultFound:
         raise NotFoundError("Couldn't find message {0} ".format(public_id))
-    if request.method == 'GET':
-        if request.headers.get('Accept', None) == 'message/rfc822':
-            return Response(message.full_body.data, mimetype='message/rfc822')
-        return g.encoder.jsonify(message)
-    elif request.method == 'PUT':
-        data = request.get_json(force=True)
-        if data.keys() != ['unread'] or not isinstance(data['unread'], bool):
-            raise InputError('Can only change the unread attribute of a '
-                             'message')
-
-        # TODO(emfree): Shouldn't allow this on messages that are actually
-        # drafts.
-
-        unread_tag = message.namespace.tags['unread']
-        unseen_tag = message.namespace.tags['unseen']
-        if data['unread']:
-            message.is_read = False
-            message.thread.apply_tag(unread_tag)
+    if request.headers.get('Accept', None) == 'message/rfc822':
+        if message.full_body is not None:
+            return Response(message.full_body.data,
+                            mimetype='message/rfc822')
         else:
-            message.is_read = True
-            message.thread.remove_tag(unseen_tag)
-            if all(m.is_read for m in message.thread.messages):
-                message.thread.remove_tag(unread_tag)
-        return g.encoder.jsonify(message)
+            g.log.error("Message without full_body attribute: id='{0}'"
+                        .format(message.id))
+            raise NotFoundError(
+                "Couldn't find raw contents for message `{0}` "
+                .format(public_id))
+    return encoder.jsonify(message)
+
+
+@app.route('/messages/<public_id>', methods=['PUT'])
+def message_update_api(public_id):
+    data = request.get_json(force=True)
+    try:
+        valid_public_id(public_id)
+        message = g.db_session.query(Message).filter(
+            Message.public_id == public_id,
+            Message.namespace_id == g.namespace.id).one()
+    except NoResultFound:
+        raise NotFoundError("Couldn't find message {0} ".format(public_id))
+    if data.keys() != ['unread'] or not isinstance(data['unread'], bool):
+        raise InputError('Can only change the unread attribute of a '
+                         'message')
+
+    # TODO(emfree): Shouldn't allow this on messages that are actually
+    # drafts.
+
+    unread_tag = message.namespace.tags['unread']
+    unseen_tag = message.namespace.tags['unseen']
+    if data['unread']:
+        message.is_read = False
+        message.thread.apply_tag(unread_tag)
+    else:
+        message.is_read = True
+        message.thread.remove_tag(unseen_tag)
+        if all(m.is_read for m in message.thread.messages):
+            message.thread.remove_tag(unread_tag)
+    return g.encoder.jsonify(message)
 
 
 # TODO Deprecate this endpoint once API usage falls off
@@ -534,11 +559,18 @@ def raw_message_api(public_id):
     if message.full_body is None:
         raise NotFoundError("Couldn't find message {0}".format(public_id))
 
-    b64_contents = base64.b64encode(message.full_body.data)
+    if message.full_body is not None:
+        b64_contents = base64.b64encode(message.full_body.data)
+    else:
+        g.log.error("Message without full_body attribute: id='{0}'"
+                    .format(message.id))
+        raise NotFoundError(
+                    "Couldn't find raw contents for message `{0}` "
+                    .format(public_id))
     return g.encoder.jsonify({"rfc2822": b64_contents})
 
 
-#
+##
 # Contacts
 ##
 @app.route('/contacts/', methods=['GET'])
@@ -548,11 +580,6 @@ def contact_search_api():
     g.parser.add_argument('view', type=bounded_str, location='args')
 
     args = strict_parse_args(g.parser, request.args)
-    term_filter_string = '%{}%'.format(args['filter'])
-    term_filter = or_(
-        Contact.name.like(term_filter_string),
-        Contact.email_address.like(term_filter_string))
-
     if args['view'] == 'count':
         results = g.db_session.query(func.count(Contact.id))
     elif args['view'] == 'ids':
@@ -560,8 +587,11 @@ def contact_search_api():
     else:
         results = g.db_session.query(Contact)
 
-    results = results.filter(Contact.namespace_id == g.namespace.id,
-                             term_filter).order_by(asc(Contact.id))
+    results = results.filter(Contact.namespace_id == g.namespace.id)
+
+    if args['filter']:
+        results = results.filter(Contact.email_address == args['filter'])
+    results = results.order_by(asc(Contact.id))
 
     if args['view'] == 'count':
         return g.encoder.jsonify({"count": results.all()})
@@ -1067,12 +1097,20 @@ def sync_deltas():
                           required=True)
     g.parser.add_argument('exclude_types', type=valid_delta_object_types,
                           location='args')
+    g.parser.add_argument('include_types', type=valid_delta_object_types,
+                          location='args')
     g.parser.add_argument('wait', type=bool, default=False,
                           location='args')
     # TODO(emfree): should support `expand` parameter in delta endpoints.
     args = strict_parse_args(g.parser, request.args)
     exclude_types = args.get('exclude_types')
+    include_types = args.get('include_types')
     cursor = args['cursor']
+
+    if include_types and exclude_types:
+        return err(400, "Invalid Request. Cannot specify both include_types"
+                   "and exclude_types")
+
     if cursor == '0':
         start_pointer = 0
     else:
@@ -1092,7 +1130,7 @@ def sync_deltas():
         with session_scope() as db_session:
             deltas, _ = delta_sync.format_transactions_after_pointer(
                 g.namespace, start_pointer, db_session, args['limit'],
-                exclude_types)
+                exclude_types, include_types)
 
         response = {
             'cursor_start': cursor,
@@ -1146,10 +1184,19 @@ def stream_changes():
                           required=True)
     g.parser.add_argument('exclude_types', type=valid_delta_object_types,
                           location='args')
+    g.parser.add_argument('include_types', type=valid_delta_object_types,
+                          location='args')
     args = strict_parse_args(g.parser, request.args)
     timeout = args['timeout'] or 1800
     transaction_pointer = None
     cursor = args['cursor']
+    exclude_types = args.get('exclude_types')
+    include_types = args.get('include_types')
+
+    if include_types and exclude_types:
+        return err(400, "Invalid Request. Cannot specify both include_types"
+                   "and exclude_types")
+
     if cursor == '0':
         transaction_pointer = 0
     else:
@@ -1159,7 +1206,6 @@ def stream_changes():
         if query_result is None:
             raise InputError('Invalid cursor {}'.format(args['cursor']))
         transaction_pointer = query_result[0]
-    exclude_types = args.get('exclude_types')
 
     # Hack to not keep a database session open for the entire (long) request
     # duration.
@@ -1168,5 +1214,116 @@ def stream_changes():
     # TODO make transaction log support the `expand` feature
     generator = delta_sync.streaming_change_generator(
         g.namespace, transaction_pointer=transaction_pointer,
-        poll_interval=1, timeout=timeout, exclude_types=exclude_types)
+        poll_interval=1, timeout=timeout, exclude_types=exclude_types,
+        include_types=include_types)
     return Response(generator, mimetype='text/event-stream')
+
+
+##
+# Groups and Contact Rankings
+##
+
+@app.route('/groups/intrinsic')
+def groups_intrinsic():
+    g.parser.add_argument('force_recalculate', type=strict_bool,
+                          location='args')
+    g.parser.add_argument('alias', type=bounded_str, location='args')
+    args = strict_parse_args(g.parser, request.args)
+    try:
+        dpcache = g.db_session.query(DataProcessingCache).filter(
+            DataProcessingCache.namespace_id == g.namespace.id).one()
+    except NoResultFound:
+        dpcache = DataProcessingCache(namespace_id=g.namespace.id)
+
+    last_updated = dpcache.contact_groups_last_updated
+    cached_data = dpcache.contact_groups
+
+    use_cached_data = (not (is_stale(last_updated) or cached_data is None) and
+                       args['force_recalculate'] is not True)
+
+    # With folders update, how we get these messages should change (?)
+    from_email = g.namespace.email_address
+
+    if not use_cached_data:
+        last_updated = None
+
+    messages = filtering.messages_for_contact_scores(
+        g.db_session, g.namespace.id, from_email, last_updated)
+    if args['alias'] is not None:
+        messages.extend(
+            filtering.messages_for_contact_scores(
+                g.db_session, g.namespace.id, args['alias'], last_updated
+            )
+        )
+
+    if use_cached_data:
+        result = cached_data
+        new_guys = calculate_group_counts(messages, from_email)
+        # result['use_cached_data'] = -1  # debug
+        for k, v in new_guys.items():
+            if k in result:
+                result[k] += v
+            else:
+                result[k] = v
+    else:
+        result = calculate_group_scores(messages, from_email)
+        dpcache.contact_groups = result
+        g.db_session.add(dpcache)
+        g.db_session.commit()
+
+    result = sorted(result.items(), key=lambda x: x[1], reverse=True)
+    # result.append(('total_messages_fetched', len(messages)))  # debug
+    return g.encoder.jsonify(result)
+
+
+@app.route('/contacts/rankings')
+def contact_rankings():
+    g.parser.add_argument('force_recalculate', type=strict_bool,
+                          location='args')
+    g.parser.add_argument('alias', type=bounded_str, location='args')
+    args = strict_parse_args(g.parser, request.args)
+    try:
+        dpcache = g.db_session.query(DataProcessingCache).filter(
+            DataProcessingCache.namespace_id == g.namespace.id).one()
+    except NoResultFound:
+        dpcache = DataProcessingCache(namespace_id=g.namespace.id)
+
+    last_updated = dpcache.contact_rankings_last_updated
+    cached_data = dpcache.contact_rankings
+
+    use_cached_data = (not (is_stale(last_updated) or cached_data is None) and
+                       args['force_recalculate'] is not True)
+
+    # With folders update, how we get these messages should change (?)
+    from_email = g.namespace.email_address
+
+    if not use_cached_data:
+        last_updated = None
+
+    messages = filtering.messages_for_contact_scores(
+        g.db_session, g.namespace.id, from_email, last_updated)
+    if args['alias'] is not None:
+        messages.extend(
+            filtering.messages_for_contact_scores(
+                g.db_session, g.namespace.id, args['alias'], last_updated
+            )
+        )
+
+    if use_cached_data:
+        new_guys = calculate_contact_scores(messages, time_dependent=False)
+        result = cached_data
+        # result['use_cached_data'] = -1  # debug
+        for k, v in new_guys.items():
+            if k in result:
+                result[k] += v
+            else:
+                result[k] = v
+    else:
+        result = calculate_contact_scores(messages)
+        dpcache.contact_rankings = result
+        g.db_session.add(dpcache)
+        g.db_session.commit()
+
+    result = sorted(result.items(), key=lambda x: x[1], reverse=True)
+    # result.append(('total messages fetched', len(messages)))  # debug
+    return g.encoder.jsonify(result)
