@@ -399,6 +399,11 @@ def calendar(db, default_account):
     return add_fake_calendar(db.session, default_account.namespace.id)
 
 
+@fixture(scope='function')
+def event(db, default_account):
+    return add_fake_event(db.session, default_account.namespace.id)
+
+
 def full_path(relpath):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relpath)
 

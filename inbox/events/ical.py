@@ -7,6 +7,7 @@ from datetime import datetime, date
 from icalendar import Calendar as iCalendar
 
 from flanker import mime
+from html2text import html2text
 from util import serialize_datetime
 from timezones import timezones_table
 from inbox.models.event import Event, EVENT_STATUSES
@@ -461,30 +462,21 @@ def generate_icalendar_invite(event):
         attendee.params['PARTSTAT'] = 'NEEDS-ACTION'
         attendees.append(attendee)
 
-    # The organizer needs to be listed as an attendee too
-    organizer_attendee = icalendar.vCalAddress("MAILTO:{}".format(account.email_address))
-    organizer_attendee.params['ROLE'] = 'REQ-PARTICIPANT'
-    organizer_attendee.params['PARTSTAT'] = 'ACCEPTED'
-    organizer_attendee.params['CN'] = account.name
-    attendees.append(organizer_attendee)
-
     if attendees != []:
         icalendar_event.add('ATTENDEE', attendees)
 
     cal.add_component(icalendar_event)
-    return cal.to_ical()
+    return cal
 
 
-def send_invite(ical_txt, event, account):
-    from inbox.sendmail.base import get_sendmail_client
-    sendmail_client = get_sendmail_client(account)
-
+def generate_invite_message(ical_txt, event, html_body, account):
+    text_body = html2text(html_body)
     msg = mime.create.multipart('mixed')
 
     body = mime.create.multipart('alternative')
     body.append(
-        mime.create.text('plain', ''),
-        mime.create.text('html', ''),
+        mime.create.text('plain', text_body),
+        mime.create.text('html', html_body),
         mime.create.text('calendar; method=REQUEST', ical_txt, charset='utf8'))
 
     attachment = mime.create.attachment(
@@ -503,12 +495,27 @@ def send_invite(ical_txt, event, account):
         msg.headers['Reply-To'] = account.email_address
 
     msg.headers['Subject'] = "Invite: {}".format(event.title)
+    return msg
 
+
+def send_invite(ical_txt, event, html_body, account):
+    from inbox.sendmail.base import get_sendmail_client, SendMailException
+
+    statuses = {}
     for participant in event.participants:
         email = participant.get('email', None)
         if email is None:
             continue
 
+        msg = generate_invite_message(ical_txt, event, html_body, account)
         msg.headers['To'] = email
         final_message = msg.to_string()
-        sendmail_client.send_generated_email([email], final_message)
+
+        try:
+            sendmail_client = get_sendmail_client(account)
+            sendmail_client.send_generated_email([email], final_message)
+            statuses[email] = {'status': 'success'}
+        except SendMailException as e:
+            statuses[email] = {'status': 'failure', 'reason': str(e)}
+
+    return statuses

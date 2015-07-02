@@ -28,8 +28,7 @@ from inbox.api.validation import (get_tags, get_attachments, get_calendar,
                                   validate_search_sort,
                                   valid_delta_object_types)
 import inbox.contacts.crud
-from inbox.sendmail.base import (create_draft, update_draft, delete_draft,
-                                 SendMailException)
+from inbox.sendmail.base import create_draft, update_draft, delete_draft
 from inbox.log import get_logger
 from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.models.action_log import schedule_action, ActionError
@@ -756,20 +755,27 @@ def event_invite_api(public_id):
     except NoResultFound:
         raise NotFoundError("Couldn't find event {0}".format(public_id))
 
+    data = request.get_json(force=True)
+
     account = g.namespace.account
-    ical_file = generate_icalendar_invite(event)
+    ical_file = generate_icalendar_invite(event).to_ical()
 
-    try:
-        send_invite(ical_file, event, account)
-    except SendMailException as exc:
-        kwargs = {}
-        if exc.failures:
-            kwargs['failures'] = exc.failures
-        if exc.server_error:
-            kwargs['server_error'] = exc.server_error
-        return err(exc.http_code, exc.message, **kwargs)
+    html_body = ''
+    if data is not None:
+        html_body = data.get('body', '')
 
-    return g.encoder.jsonify(event)
+    # Send invites returns a list of statuses for the participants. We return
+    # 200 only if every email was sent ("status" == "success")
+
+    statuses = send_invite(ical_file, event, html_body, account)
+    success = all(participant['status'] == 'success'
+                  for participant in statuses.values())
+
+    if success:
+        return g.encoder.jsonify(event)
+    else:
+        return err(400, "Invite sending failed for some recipients.",
+                   statuses=statuses)
 
 
 #
