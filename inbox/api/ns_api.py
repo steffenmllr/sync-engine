@@ -440,26 +440,32 @@ def message_query_api():
     g.parser.add_argument('thread_id', type=valid_public_id, location='args')
     g.parser.add_argument('tag', type=bounded_str, location='args')
     g.parser.add_argument('view', type=view, location='args')
+    g.parser.add_argument('search', type=bounded_str, location='args')
     args = strict_parse_args(g.parser, request.args)
-    messages = filtering.messages(
-        namespace_id=g.namespace.id,
-        subject=args['subject'],
-        thread_public_id=args['thread_id'],
-        to_addr=args['to'],
-        from_addr=args['from'],
-        cc_addr=args['cc'],
-        bcc_addr=args['bcc'],
-        any_email=args['any_email'],
-        started_before=args['started_before'],
-        started_after=args['started_after'],
-        last_message_before=args['last_message_before'],
-        last_message_after=args['last_message_after'],
-        filename=args['filename'],
-        tag=args['tag'],
-        limit=args['limit'],
-        offset=args['offset'],
-        view=args['view'],
-        db_session=g.db_session)
+
+    if args['search']:
+        from inbox.search.imap import search
+        messages = search(g.db_session, g.namespace.id, args['search'])
+    else:
+        messages = filtering.messages(
+            namespace_id=g.namespace.id,
+            subject=args['subject'],
+            thread_public_id=args['thread_id'],
+            to_addr=args['to'],
+            from_addr=args['from'],
+            cc_addr=args['cc'],
+            bcc_addr=args['bcc'],
+            any_email=args['any_email'],
+            started_before=args['started_before'],
+            started_after=args['started_after'],
+            last_message_before=args['last_message_before'],
+            last_message_after=args['last_message_after'],
+            filename=args['filename'],
+            tag=args['tag'],
+            limit=args['limit'],
+            offset=args['offset'],
+            view=args['view'],
+            db_session=g.db_session)
 
     # Use a new encoder object with the expand parameter set.
     encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
@@ -574,7 +580,7 @@ def raw_message_api(public_id):
 # Contacts
 ##
 @app.route('/contacts/', methods=['GET'])
-def contact_search_api():
+def contact_api():
     g.parser.add_argument('filter', type=bounded_str, default='',
                           location='args')
     g.parser.add_argument('view', type=bounded_str, location='args')
@@ -614,7 +620,7 @@ def contact_read_api(public_id):
 # Events
 ##
 @app.route('/events/', methods=['GET'])
-def event_search_api():
+def event_api():
     g.parser.add_argument('event_id', type=valid_public_id, location='args')
     g.parser.add_argument('calendar_id', type=valid_public_id, location='args')
     g.parser.add_argument('title', type=bounded_str, location='args')
@@ -915,7 +921,7 @@ def file_download_api(public_id):
 # Calendars
 ##
 @app.route('/calendars/', methods=['GET'])
-def calendar_search_api():
+def calendar_api():
     g.parser.add_argument('view', type=view, location='args')
 
     args = strict_parse_args(g.parser, request.args)
