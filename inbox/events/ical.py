@@ -6,7 +6,6 @@ import icalendar
 from datetime import datetime, date
 import icalendar
 from icalendar import Calendar as iCalendar
-
 from flanker import mime
 from html2text import html2text
 from util import serialize_datetime
@@ -152,6 +151,8 @@ def events_from_ics(namespace, calendar, ics_str):
             participants = []
 
             organizer = component.get('organizer')
+            organizer_name = None
+            organizer_email = None
             if organizer:
                 # Here's the problem. Gmail and Exchange define the organizer
                 # field like this:
@@ -166,7 +167,7 @@ def events_from_ics(namespace, calendar, ics_str):
                     organizer_email = organizer.params['EMAIL']
                 else:
                     organizer_email = unicode(organizer)
-                    if organizer_email.startswith('mailto:'):
+                    if organizer_email.lower().startswith('mailto:'):
                         organizer_email = organizer_email[7:]
 
                 if 'CN' in organizer.params:
@@ -559,19 +560,30 @@ def _generate_rsvp(status, account, event):
     if event.status == 'confirmed':
         icalevent['status'] = 'CONFIRMED'
 
-    icalevent['last-modified'] = event.last_modified
-    icalevent['dtstamp'] = icalevent['last-modified']
-    icalevent['dtstart'] = event.start
-    icalevent['dtend'] = event.end
-    icalevent['description'] = event.description
-    icalevent['location'] = event.location
-    icalevent['summary'] = event.summary
+    if event.last_modified is not None:
+        icalevent['last-modified'] = serialize_datetime(event.last_modified)
+        icalevent['dtstamp'] = icalevent['last-modified']
+
+    if event.start is not None:
+        icalevent['dtstart'] = serialize_datetime(event.start)
+
+    if event.end is not None:
+        icalevent['dtend'] = serialize_datetime(event.end)
+
+    if event.description is not None:
+        icalevent['description'] = event.description
+
+    if event.location is not None:
+        icalevent['location'] = event.location
+
+    if event.title is not None:
+        icalevent['summary'] = event.title
 
     attendee = icalendar.vCalAddress('MAILTO:{}'.format(account.email_address))
     attendee.params['cn'] = account.name
     attendee.params['partstat'] = status
-    event.add('attendee', attendee, encode=0)
-    cal.add_component(event)
+    icalevent.add('attendee', attendee, encode=0)
+    cal.add_component(icalevent)
 
     ret = {}
     ret["cal"] = cal
@@ -616,8 +628,9 @@ def send_rsvp(ical_data, event, body_text, account):
     msg.headers['Subject'] = 'RSVP to "{}"'.format(event.title)
 
     final_message = msg.to_string()
+    print final_message
     try:
         sendmail_client = get_sendmail_client(account)
-        sendmail_client.send_generated_email([email], final_message)
+        sendmail_client.send_generated_email([rsvp_to], final_message)
     except SendMailException:
         return None

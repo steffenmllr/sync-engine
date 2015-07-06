@@ -28,7 +28,7 @@ from inbox.api.validation import (get_tags, get_attachments, get_calendar,
                                   validate_search_sort,
                                   valid_delta_object_types)
 import inbox.contacts.crud
-from inbox.sendmail.base import create_draft, update_draft, delete_draft
+from inbox.sendmail.base import create_draft, update_draft, delete_draft, SendMailException
 from inbox.log import get_logger
 from inbox.models.constants import MAX_INDEXABLE_LENGTH
 from inbox.models.action_log import schedule_action, ActionError
