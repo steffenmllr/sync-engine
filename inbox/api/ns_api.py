@@ -14,7 +14,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.models import (Message, Block, Part, Thread, Namespace,
                           Contact, Calendar, Event, Transaction,
-                          DataProcessingCache, Category)
+                          DataProcessingCache, Category, Folder, Label)
 from inbox.api.sending import send_draft, send_raw_mime
 from inbox.api.update import update_message, update_thread
 from inbox.api.kellogs import APIEncoder
@@ -429,8 +429,38 @@ def folders_labels_api_impl(public_id):
             filter(Category.namespace_id == g.namespace.id,
                    Category.public_id == public_id).all()
     except NoResultFound:
-        raise NotFoundError("Object not found")
+        raise NotFoundError('Object not found')
     return g.encoder.jsonify(category)
+
+
+@app.route('/folders', methods=['POST'])
+@app.route('/labels', methods=['POST'])
+def folders_labels_create_api():
+    category_type = g.namespace.account.category_type
+    data = request.get_json(force=True)
+    display_name = data.get('display_name')
+
+    if display_name is None or not isinstance(display_name, basestring):
+        raise InputError('"display_name" must be a valid string')
+
+    if g.db_session.query(Category).filter(
+            Category.namespace_id == g.namespace.id,
+            Category.display_name == display_name).first() is not None:
+        raise InputError('{} with name "{}" already exists'.format(
+                         category_type, display_name))
+
+    if category_type == 'folder':
+        action = 'create_folder'
+        created = Folder.find_or_create(g.db_session, g.namespace.account,
+                                        display_name)
+    else:
+        action = 'create_label'
+        created = Label.find_or_create(g.db_session, g.namespace.account,
+                                       display_name)
+    g.db_session.flush()
+
+    schedule_action(action, created, g.namespace.id, g.db_session)
+    return g.encoder.jsonify(created.category)
 
 
 @app.route('/tags')

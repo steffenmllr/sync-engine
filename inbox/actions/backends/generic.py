@@ -14,7 +14,7 @@ log = get_logger()
 PROVIDER = 'generic'
 
 __all__ = ['set_remote_starred', 'set_remote_unread', 'remote_move',
-           'remote_save_draft', 'remote_delete_draft']
+           'remote_save_draft', 'remote_delete_draft', 'remote_create_folder']
 
 # STOPSHIP(emfree):
 # * should update local UID state here after action succeeds, instead of
@@ -67,6 +67,13 @@ def remote_move(account, message_id, db_session, destination):
             crispin_client.select_folder(folder_name, uidvalidity_cb)
             crispin_client.conn.copy(uids, destination)
             crispin_client.delete_uids(uids)
+
+
+@retry_crispin
+def remote_create_folder(account, folder_id, db_session):
+    folder = db_session.query(Folder).get(folder_id)
+    with writable_connection_pool(account.id).get() as crispin_client:
+        crispin_client.conn.create_folder(folder.name)
 
 
 @retry_crispin
