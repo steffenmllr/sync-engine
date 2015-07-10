@@ -80,6 +80,21 @@ def create_label(account_id, label_id, db_session):
     remote_create(account, label_id, db_session)
 
 
+def update_folder(account_id, folder_id, db_session, args):
+    old_name = args['old_name']
+    account = db_session.query(Account).get(account_id)
+    remote_create = module_registry[account.provider].remote_update_folder
+    remote_create(account, folder_id, db_session, old_name)
+
+
+def update_label(account_id, label_id, db_session, args):
+    old_name = args['old_name']
+    account = db_session.query(Account).get(account_id)
+    assert account.provider == 'gmail'
+    remote_create = module_registry[account.provider].remote_update_label
+    remote_create(account, label_id, db_session, old_name)
+
+
 def _create_email(account, message):
     blocks = [p.block for p in message.attachments]
     attachments = generate_attachments(blocks)

@@ -16,7 +16,7 @@ from inbox.models import (Message, Block, Part, Thread, Namespace,
                           Contact, Calendar, Event, Transaction,
                           DataProcessingCache, Category, Folder, Label)
 from inbox.api.sending import send_draft, send_raw_mime
-from inbox.api.update import update_message, update_thread
+from inbox.api.update import update_message, update_thread, update_category
 from inbox.api.kellogs import APIEncoder
 from inbox.api import filtering
 from inbox.api.validation import (get_attachments, get_calendar,
@@ -451,16 +451,44 @@ def folders_labels_create_api():
 
     if category_type == 'folder':
         action = 'create_folder'
-        created = Folder.find_or_create(g.db_session, g.namespace.account,
-                                        display_name)
+        obj = Folder.find_or_create(g.db_session, g.namespace.account,
+                                    display_name)
     else:
         action = 'create_label'
-        created = Label.find_or_create(g.db_session, g.namespace.account,
-                                       display_name)
+        obj = Label.find_or_create(g.db_session, g.namespace.account,
+                                   display_name)
+
     g.db_session.flush()
 
-    schedule_action(action, created, g.namespace.id, g.db_session)
-    return g.encoder.jsonify(created.category)
+    schedule_action(action, obj, g.namespace.id, g.db_session)
+    return g.encoder.jsonify(obj.category)
+
+
+@app.route('/folders/<public_id>', methods=['PUT'])
+@app.route('/labels/<public_id>', methods=['PUT'])
+def folder_label_update_api(public_id):
+    valid_public_id(public_id)
+    category_type = g.namespace.account.category_type
+    try:
+        category = g.db_session.query(Category).filter(
+            Category.namespace_id == g.namespace.id,
+            Category.public_id == public_id).one()
+    except NoResultFound:
+        raise InputError("Couldn't find {} {}".format(
+            category_type, public_id))
+    if category.name is not None:
+        raise InputError("Cannot modify a standard {}".format(category_type))
+
+    data = request.get_json(force=True)
+    display_name = data.get('display_name')
+
+    if display_name is None or not isinstance(display_name, basestring):
+        raise InputError('"display_name" must be a valid string')
+
+    update_category(category, display_name, g.db_session)
+    g.db_session.flush()
+
+    return g.encoder.jsonify(category)
 
 
 @app.route('/tags')

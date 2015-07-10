@@ -66,7 +66,6 @@ def update_thread(thread, request_data, db_session):
         else:
             folder_public_id = inbox_category.public_id
 
-
     for message in thread.messages:
         if message.is_draft:
             continue
@@ -77,6 +76,31 @@ def update_thread(thread, request_data, db_session):
             update_message_folder(message, db_session, folder_public_id)
 
     # -- End tags API shim
+
+
+def update_category(category, display_name, db_session):
+    if category.namespace.account.discriminator == 'easaccount':
+        assert len(category.easfolders) == 1
+        obj = category.easfolders[0]
+    elif category.account.category_type == 'folder':
+        assert len(category.folders) == 1
+        obj = category.folders[0]
+    else:
+        assert len(category.labels) == 1
+        obj = category.labels[0]
+
+    current_name = obj.name
+    category.display_name = display_name
+    # TODO[k]: Update this here or at time of performing remote action?
+    obj.name = display_name
+    db_session.flush()
+
+    if category.type == 'folder':
+        schedule_action('update_folder', obj, category.namespace_id,
+                        db_session, old_name=current_name)
+    else:
+        schedule_action('update_label', obj, category.namespace_id,
+                        db_session, old_name=current_name)
 
 
 def parse(request_data, accept_labels):
