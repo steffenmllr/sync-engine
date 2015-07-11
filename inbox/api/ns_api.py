@@ -14,9 +14,9 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.models import (Message, Block, Part, Thread, Namespace,
                           Contact, Calendar, Event, Transaction,
-                          DataProcessingCache, Category, Folder, Label)
+                          DataProcessingCache, Category)
 from inbox.api.sending import send_draft, send_raw_mime
-from inbox.api.update import update_message, update_thread, update_category
+from inbox.api.update import update_message, update_thread
 from inbox.api.kellogs import APIEncoder
 from inbox.api import filtering
 from inbox.api.validation import (get_attachments, get_calendar,
@@ -449,19 +449,17 @@ def folders_labels_create_api():
         raise InputError('{} with name "{}" already exists'.format(
                          category_type, display_name))
 
-    if category_type == 'folder':
-        action = 'create_folder'
-        obj = Folder.find_or_create(g.db_session, g.namespace.account,
-                                    display_name)
-    else:
-        action = 'create_label'
-        obj = Label.find_or_create(g.db_session, g.namespace.account,
-                                   display_name)
-
+    obj = Category.find_or_create(g.db_session, g.namespace.id,
+                                  name=None, display_name=display_name,
+                                  type_=category_type)
     g.db_session.flush()
 
-    schedule_action(action, obj, g.namespace.id, g.db_session)
-    return g.encoder.jsonify(obj.category)
+    if category_type == 'folder':
+        schedule_action('create_folder', obj, g.namespace.id, g.db_session)
+    else:
+        schedule_action('create_label', obj, g.namespace.id, g.db_session)
+
+    return g.encoder.jsonify(obj)
 
 
 @app.route('/folders/<public_id>', methods=['PUT'])
@@ -481,12 +479,22 @@ def folder_label_update_api(public_id):
 
     data = request.get_json(force=True)
     display_name = data.get('display_name')
-
     if display_name is None or not isinstance(display_name, basestring):
         raise InputError('"display_name" must be a valid string')
 
-    update_category(category, display_name, g.db_session)
+    current_name = category.display_name
+    category.display_name = display_name
     g.db_session.flush()
+
+    if category.type == 'folder':
+        schedule_action('update_folder', category, g.namespace.id,
+                        g.db_session, old_name=current_name)
+    else:
+        schedule_action('update_label', category, g.namespace.id,
+                        g.db_session, old_name=current_name)
+
+    # TODO[k]: Update corresponding folder/ label once syncback is successful,
+    # rather than waiting for sync to pick it up?
 
     return g.encoder.jsonify(category)
 

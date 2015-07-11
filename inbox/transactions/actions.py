@@ -47,7 +47,7 @@ ACTION_FUNCTION_MAP = {
     'create_folder': create_folder,
     'create_label': create_label,
     'update_folder': update_folder,
-    'update_label': update_label,
+    'update_label': update_label
 }
 
 

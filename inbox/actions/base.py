@@ -67,32 +67,32 @@ def change_labels(account_id, message_id, db_session, args):
                          added_labels)
 
 
-def create_folder(account_id, folder_id, db_session):
+def create_folder(account_id, category_id, db_session):
     account = db_session.query(Account).get(account_id)
     remote_create = module_registry[account.provider].remote_create_folder
-    remote_create(account, folder_id, db_session)
+    remote_create(account, category_id, db_session)
 
 
-def create_label(account_id, label_id, db_session):
+def create_label(account_id, category_id, db_session):
     account = db_session.query(Account).get(account_id)
     assert account.provider == 'gmail'
     remote_create = module_registry[account.provider].remote_create_label
-    remote_create(account, label_id, db_session)
+    remote_create(account, category_id, db_session)
 
 
-def update_folder(account_id, folder_id, db_session, args):
+def update_folder(account_id, category_id, db_session, args):
     old_name = args['old_name']
     account = db_session.query(Account).get(account_id)
-    remote_create = module_registry[account.provider].remote_update_folder
-    remote_create(account, folder_id, db_session, old_name)
+    remote_update = module_registry[account.provider].remote_update_folder
+    remote_update(account, category_id, db_session, old_name)
 
 
-def update_label(account_id, label_id, db_session, args):
+def update_label(account_id, category_id, db_session, args):
     old_name = args['old_name']
     account = db_session.query(Account).get(account_id)
     assert account.provider == 'gmail'
-    remote_create = module_registry[account.provider].remote_update_label
-    remote_create(account, label_id, db_session, old_name)
+    remote_update = module_registry[account.provider].remote_update_label
+    remote_update(account, category_id, db_session, old_name)
 
 
 def _create_email(account, message):

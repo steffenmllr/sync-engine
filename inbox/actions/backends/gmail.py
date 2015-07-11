@@ -7,7 +7,7 @@ from inbox.actions.backends.generic import (set_remote_starred,
                                             remote_save_draft,
                                             uids_by_folder)
 from inbox.mailsync.backends.imap.generic import uidvalidity_cb
-from inbox.models.label import Label
+from inbox.models.category import Category
 
 PROVIDER = 'gmail'
 
@@ -26,13 +26,13 @@ def remote_change_labels(account, message_id, db_session, removed_labels,
             crispin_client.conn.remove_gmail_labels(uids, removed_labels)
 
 
-def remote_create_label(account, label_id, db_session):
-    label = db_session.query(Label).get(label_id)
+def remote_create_label(account, category_id, db_session):
+    category = db_session.query(Category).get(category_id)
     with writable_connection_pool(account.id).get() as crispin_client:
-        crispin_client.conn.create_folder(label.name)
+        crispin_client.conn.create_folder(category.display_name)
 
 
-def remote_update_label(account, label_id, db_session, old_name):
-    label = db_session.query(Label).get(label_id)
+def remote_update_label(account, category_id, db_session, old_name):
+    category = db_session.query(Category).get(category_id)
     with writable_connection_pool(account.id).get() as crispin_client:
-        crispin_client.conn.rename_folder(old_name, label.name)
+        crispin_client.conn.rename_folder(old_name, category.display_name)

@@ -8,6 +8,7 @@ from inbox.log import get_logger
 from inbox.mailsync.backends.imap.generic import uidvalidity_cb
 from inbox.models.backends.imap import ImapUid
 from inbox.models.folder import Folder
+from inbox.models.category import Category
 
 log = get_logger()
 
@@ -71,17 +72,17 @@ def remote_move(account, message_id, db_session, destination):
 
 
 @retry_crispin
-def remote_create_folder(account, folder_id, db_session):
-    folder = db_session.query(Folder).get(folder_id)
+def remote_create_folder(account, category_id, db_session):
+    category = db_session.query(Category).get(category_id)
     with writable_connection_pool(account.id).get() as crispin_client:
-        crispin_client.conn.create_folder(folder.name)
+        crispin_client.conn.create_folder(category.display_name)
 
 
 @retry_crispin
-def remote_update_folder(account, folder_id, db_session, old_name):
-    folder = db_session.query(Folder).get(folder_id)
+def remote_update_folder(account, category_id, db_session, old_name):
+    category = db_session.query(Category).get(category_id)
     with writable_connection_pool(account.id).get() as crispin_client:
-        crispin_client.conn.rename_folder(old_name, folder.name)
+        crispin_client.conn.rename_folder(old_name, category.display_name)
 
 
 @retry_crispin
