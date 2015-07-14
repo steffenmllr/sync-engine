@@ -219,6 +219,46 @@ def default_namespace(db, default_account):
 
 
 @fixture(scope='function')
+def generic_account(db):
+    import platform
+    from inbox.models.backends.generic import GenericAccount
+    from inbox.models import Namespace
+    ns = Namespace()
+    account = GenericAccount(
+        email_address='inboxapptest@example.com',
+        sync_host=platform.node(),
+        provider='custom')
+    account.namespace = ns
+    account.create_emailed_events_calendar()
+    account.password = 'bananagrams'
+    db.session.add(account)
+    db.session.commit()
+    return account
+
+
+@fixture(scope='function')
+def gmail_account(db):
+    import platform
+    from inbox.models import Namespace
+    from inbox.models.backends.gmail import GmailAccount
+
+    account = db.session.query(GmailAccount).first()
+    if account is None:
+        with db.session.no_autoflush:
+            namespace = Namespace()
+            account = GmailAccount(
+                email_address='almondsunshine@gmail.com',
+                refresh_token='tearsofgold',
+                sync_host=platform.node(),
+                namespace=namespace)
+            account.password = 'COyPtHmj9E9bvGdN'
+            db.session.add(account)
+    db.session.commit()
+
+    return account
+
+
+@fixture(scope='function')
 def contact_sync(config, db, default_account):
     from inbox.contacts.remote_sync import ContactSync
     return ContactSync('inboxapptest@gmail.com', 'gmail', default_account.id,
@@ -385,6 +425,11 @@ def imapuid(db, default_account, message, folder):
 @fixture(scope='function')
 def calendar(db, default_account):
     return add_fake_calendar(db.session, default_account.namespace.id)
+
+
+@fixture(scope='function')
+def event(db, default_account):
+    return add_fake_event(db.session, default_account.namespace.id)
 
 
 def full_path(relpath):
