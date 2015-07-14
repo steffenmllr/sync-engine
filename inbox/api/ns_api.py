@@ -25,9 +25,8 @@ from inbox.api.validation import (get_attachments, get_calendar,
                                   bounded_str, view, strict_parse_args,
                                   limit, offset, ValidatableArgument,
                                   strict_bool, validate_draft_recipients,
-                                  validate_search_query,
-                                  validate_search_sort,
-                                  valid_delta_object_types)
+                                  validate_search_query, validate_search_sort,
+                                  valid_delta_object_types, valid_display_name)
 from inbox.contacts.algorithms import (calculate_contact_scores,
                                        calculate_group_scores,
                                        calculate_group_counts, is_stale)
@@ -407,8 +406,8 @@ def raw_message_api(public_id):
 @app.route('/folders')
 @app.route('/labels')
 def folders_labels_query_api():
-    categories = g.db_session.query(Category). \
-        filter(Category.namespace_id == g.namespace.id).all()
+    categories = g.db_session.query(Category).filter(
+        Category.namespace_id == g.namespace.id).all()
     return g.encoder.jsonify(categories)
 
 
@@ -425,9 +424,9 @@ def label_api(public_id):
 def folders_labels_api_impl(public_id):
     valid_public_id(public_id)
     try:
-        category = g.db_session.query(Category). \
-            filter(Category.namespace_id == g.namespace.id,
-                   Category.public_id == public_id).all()
+        category = g.db_session.query(Category).filter(
+            Category.namespace_id == g.namespace.id,
+            Category.public_id == public_id).all()
     except NoResultFound:
         raise NotFoundError('Object not found')
     return g.encoder.jsonify(category)
@@ -440,33 +439,27 @@ def folders_labels_create_api():
     data = request.get_json(force=True)
     display_name = data.get('display_name')
 
-    if display_name is None or not isinstance(display_name, basestring):
-        raise InputError('"display_name" must be a valid string')
+    valid_display_name(g.namespace.id, category_type, display_name,
+                       g.db_session)
 
-    if g.db_session.query(Category).filter(
-            Category.namespace_id == g.namespace.id,
-            Category.display_name == display_name).first() is not None:
-        raise InputError('{} with name "{}" already exists'.format(
-                         category_type, display_name))
-
-    obj = Category.find_or_create(g.db_session, g.namespace.id,
-                                  name=None, display_name=display_name,
-                                  type_=category_type)
+    category = Category.find_or_create(g.db_session, g.namespace.id,
+                                       name=None, display_name=display_name,
+                                       type_=category_type)
     g.db_session.flush()
 
     if category_type == 'folder':
-        schedule_action('create_folder', obj, g.namespace.id, g.db_session)
+        schedule_action('create_folder', category, g.namespace.id, g.db_session)
     else:
-        schedule_action('create_label', obj, g.namespace.id, g.db_session)
+        schedule_action('create_label', category, g.namespace.id, g.db_session)
 
-    return g.encoder.jsonify(obj)
+    return g.encoder.jsonify(category)
 
 
 @app.route('/folders/<public_id>', methods=['PUT'])
 @app.route('/labels/<public_id>', methods=['PUT'])
 def folder_label_update_api(public_id):
-    valid_public_id(public_id)
     category_type = g.namespace.account.category_type
+    valid_public_id(public_id)
     try:
         category = g.db_session.query(Category).filter(
             Category.namespace_id == g.namespace.id,
@@ -479,14 +472,14 @@ def folder_label_update_api(public_id):
 
     data = request.get_json(force=True)
     display_name = data.get('display_name')
-    if display_name is None or not isinstance(display_name, basestring):
-        raise InputError('"display_name" must be a valid string')
+    valid_display_name(g.namespace.id, category_type, display_name,
+                       g.db_session)
 
     current_name = category.display_name
     category.display_name = display_name
     g.db_session.flush()
 
-    if category.type == 'folder':
+    if category_type == 'folder':
         schedule_action('update_folder', category, g.namespace.id,
                         g.db_session, old_name=current_name)
     else:
