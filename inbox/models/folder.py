@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.schema import UniqueConstraint
@@ -46,6 +46,9 @@ class Folder(MailSyncBase):
         if self.name is None:
             return None
         return self.name.lower()
+
+    initial_sync_start = Column(DateTime, nullable=True)
+    initial_sync_end = Column(DateTime, nullable=True)
 
     @property
     def namespace(self):
