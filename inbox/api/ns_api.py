@@ -25,9 +25,9 @@ from inbox.api.validation import (get_tags, get_attachments, get_calendar,
                                   bounded_str, view, strict_parse_args,
                                   limit, offset, ValidatableArgument,
                                   strict_bool, validate_draft_recipients,
-                                  validate_search_query,
-                                  validate_search_sort,
-                                  valid_delta_object_types)
+                                  validate_search_query, validate_search_sort,
+                                  valid_delta_object_types,
+                                  noop_event_update)
 from inbox.contacts.algorithms import (calculate_contact_scores,
                                        calculate_group_scores,
                                        calculate_group_counts, is_stale)
@@ -751,6 +751,10 @@ def event_update_api(public_id):
         for p in data['participants']:
             if 'status' not in p:
                 p['status'] = 'noreply'
+
+    # Don't update an event if we don't need to.
+    if noop_event_update(event, data):
+        return g.encoder.jsonify(event)
 
     for attr in ['title', 'description', 'location', 'when', 'participants']:
         if attr in data:
