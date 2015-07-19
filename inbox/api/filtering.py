@@ -114,20 +114,19 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
     # representations faster.
     if view != 'ids':
         if view == 'expanded':
+            # TODO(emfree): improve loading pattern
             query = query.options(
-                subqueryload(Thread.messages).
-                load_only('public_id', 'subject', 'is_draft', 'version',
-                          'from_addr', 'to_addr', 'cc_addr', 'bcc_addr',
-                          'received_date', 'snippet', 'is_read',
-                          'reply_to_message_id', 'reply_to')
-                .joinedload(Message.parts)
-                .joinedload(Part.block))
+                subqueryload(Thread.messages)
+                .defer('_compacted_body')
+                .joinedload(Message.messagecategories)
+                .joinedload(MessageCategory.category))
 
         else:
             query = query.options(
                 subqueryload(Thread.messages).
                 load_only('public_id', 'is_draft', 'from_addr', 'to_addr',
-                          'cc_addr', 'bcc_addr'))
+                          'cc_addr', 'bcc_addr', 'is_read', 'is_starred').
+                joinedload(Message.messagecategories).joinedload('category'))
 
     query = query.order_by(desc(Thread.recentdate)).limit(limit)
     if offset:
@@ -254,7 +253,11 @@ def messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
 
     # Eager-load related attributes to make constructing API representations
     # faster.
-    query = query.options(subqueryload(Message.parts).joinedload(Part.block))
+    query = query.options(
+        subqueryload(Message.parts).joinedload(Part.block),
+        subqueryload(Message.messagecategories).joinedload(
+            MessageCategory.category),
+        subqueryload(Message.events))
 
     return query.all()
 
@@ -446,8 +449,6 @@ def events(namespace_id, event_public_id, calendar_public_id, title,
         query = query.order_by(asc(Event.start)).limit(limit)
         if offset:
             query = query.offset(offset)
-        # Eager-load some objects in order to make constructing API
-        # representations faster.
         all_events = query.all()
 
     if view == 'ids':

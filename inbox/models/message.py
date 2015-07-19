@@ -39,10 +39,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 
     namespace_id = Column(ForeignKey(Namespace.id, ondelete='CASCADE'),
                           index=True, nullable=False)
-    namespace = relationship(
-        'Namespace',
-        lazy='joined',
-        load_on_pending=True)
+    namespace = relationship('Namespace', load_on_pending=True)
 
     # Do delete messages if their associated thread is deleted.
     thread_id = Column(Integer, ForeignKey('thread.id', ondelete='CASCADE'),
