@@ -1,14 +1,14 @@
 """new tables for folders overhaul
 
 Revision ID: 23e204cd1d91
-Revises:14692efd261b
+Revises:246a6bf050bc
 Create Date: 2015-06-19 00:28:56.991030
 
 """
 
 # revision identifiers, used by Alembic.
 revision = '23e204cd1d91'
-down_revision = '14692efd261b'
+down_revision = '246a6bf050bc'
 
 from alembic import op
 import sqlalchemy as sa
@@ -122,10 +122,10 @@ def upgrade():
                               'easfoldersyncstatus', 'category',
                               ['category_id'], ['id'])
 
-    op.add_column('message',
-                  sa.Column('is_starred', sa.Boolean(),
-                            server_default=sa.sql.expression.false(),
-                            nullable=False))
+    #op.add_column('message',
+    #              sa.Column('is_starred', sa.Boolean(),
+    #                        server_default=sa.sql.expression.false(),
+    #                        nullable=False))
 
 
 def downgrade():
