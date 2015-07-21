@@ -471,12 +471,13 @@ class FolderSyncEngine(Greenlet):
             latency_millis = (
                 datetime.utcnow() - new_uid.message.received_date) \
                 .total_seconds() * 1000
-            statsd_client.timing(
+            metrics = [
                 '.'.join(['accounts', 'overall', 'message_latency']),
-                latency_millis)
-            statsd_client.timing(
                 '.'.join(['accounts', str(acct.id), 'message_latency']),
-                latency_millis)
+                '.'.join(['providers', self.provider_name, 'message_latency']),
+            ]
+            for metric in metrics:
+                statsd_client.timing(metric, latency_millis)
 
         return new_uid
 
@@ -534,6 +535,7 @@ class FolderSyncEngine(Greenlet):
         # Note that folder_name here might *NOT* be equal to self.folder_name,
         # because, for example, we download messages via the 'All Mail' folder
         # in Gmail.
+        start = datetime.utcnow()
         raw_messages = crispin_client.uids(uids)
         if not raw_messages:
             return 0
@@ -543,6 +545,15 @@ class FolderSyncEngine(Greenlet):
                     self.account_id, db_session, log, folder_name,
                     raw_messages, self.create_message)
                 commit_uids(db_session, new_imapuids, self.provider_name)
+        # If we downloaded uids, record message velocity (#uid / latency)
+        if self.state == 'initial' and len(new_imapuids):
+            latency = (datetime.utcnow() - start).total_seconds() * 1000
+            latency_per_uid = float(latency) / len(new_imapuids)
+            statsd_client.timing(
+                '.'.join(['providers', self.provider_name,
+                          'message_velocity']),
+                latency_per_uid)
+
         return len(new_imapuids)
 
     def update_metadata(self, crispin_client, updated):
