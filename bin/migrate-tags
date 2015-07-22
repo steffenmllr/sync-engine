@@ -171,11 +171,14 @@ def migrate_account(account_id, updated_since):
 @click.option('--cpu_id', type=int)
 @click.option('--num_cpus', type=int)
 @click.option('--updated_since')
-def migrate_accounts(cpu_id, num_cpus, updated_since):
+@click.option('--min_id', type=int)
+def migrate_accounts(cpu_id, num_cpus, updated_since, min_id):
     with session_scope() as db_session:
         q = db_session.query(Account)
         if cpu_id is not None:
             q = q.filter(func.mod(Account.id, num_cpus) == cpu_id)
+        if min_id is not None:
+            q = q.filter(Account.id >= min_id)
         account_ids = []
         for account in q:
             # Skip accounts that have been inactive for a long time.
