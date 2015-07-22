@@ -97,6 +97,9 @@ def create_categories_for_gmail_folders(account, db_session):
 
 def create_categories_for_easfoldersyncstatuses(account, db_session):
     from inbox.mailsync.backends.eas.base.foldersync import save_categories
+    if not account.foldersyncstatuses:
+        return
+
     save_categories(db_session, account, account.primary_device_id)
     db_session.commit()
     save_categories(db_session, account, account.secondary_device_id)
