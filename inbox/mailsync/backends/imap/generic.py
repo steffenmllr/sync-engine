@@ -548,7 +548,7 @@ class FolderSyncEngine(Greenlet):
         # If we downloaded uids, record message velocity (#uid / latency)
         if self.state == 'initial' and len(new_imapuids):
             self._report_message_velocity(datetime.utcnow() - start,
-                                          len(new_uids))
+                                          len(new_imapuids))
 
         return len(new_imapuids)
 
