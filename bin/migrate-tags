@@ -15,6 +15,8 @@ log = get_logger()
 
 
 def populate_labels(uid, account, db_session):
+    if uid.g_labels is None:
+        return
     existing_labels = {
         (l.name, l.canonical_name): l for l in account.labels
     }
@@ -48,6 +50,7 @@ def populate_labels(uid, account, db_session):
 
 
 def set_labels_for_imapuids(account, db_session, updated_since):
+    account_id = account.id
     uids = db_session.query(ImapUid).filter(
         ImapUid.account_id == account.id).options(
             subqueryload(ImapUid.labelitems).joinedload('label'))
