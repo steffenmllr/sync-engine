@@ -95,6 +95,9 @@ class GmailSyncMonitor(ImapSyncMonitor):
 
         # Create new labels, folders
         for raw_folder in raw_folders:
+            if raw_folder.role in ('starred',):
+                continue
+
             Label.find_or_create(db_session, account,
                                  raw_folder.display_name, raw_folder.role)
 
