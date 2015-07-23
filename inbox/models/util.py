@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 import math
 from collections import OrderedDict
@@ -161,3 +162,50 @@ def _batch_delete(engine, table, (column, id_)):
     end = time.time()
     print 'Completed batch deletion for table: {}, time taken: {}'.\
         format(table, end - start)
+
+
+def update_message_categories(db_session, message, synced_categories):
+    from inbox.models.actionlog import ActionLog
+
+    now = datetime.utcnow()
+
+    # We make the simplifying assumption that only the latest syncback action
+    # matters, since it reflects the current local state
+
+    # STOPSHIP TODO[k]: Optimize this query
+    actionlog = db_session.query(ActionLog).filter(
+        ActionLog.namespace_id == message.namespace_id,
+        ActionLog.table_name == 'message',
+        ActionLog.record_id == message.id,
+        ActionLog.action.in_(['change_labels', 'move'])).order_by(
+        ActionLog.id.desc()).first()
+
+    if actionlog.status == 'successful' and \
+            (now - actionlog.updated_at).seconds >= 10:
+        # We performed a local change that was synced back to the remote,
+        # long enough ago for sync to pick it up.
+        # So, safe to overwrite. Also reset the local_changes counter.
+        message.categories = synced_categories
+        message.categories_change_count = 0
+
+    elif actionlog.status == 'failed' and \
+            (now - actionlog.updated_at).seconds >= 10:
+        # The syncback action failed, long enough ago to overwrite the local
+        # changes made - needed in order to pick up future changes to
+        # the message.
+        # So, overwrite and reset the local_changes counter too.
+        # TODO[k]/(emfree): Implement proper rollback of local state
+        message.categories = synced_categories
+        message.categories_change_count = 0
+
+    else:
+        # Case 1: actionlog.status = 'pending'
+        # We performed a local change that is yet to synced back to the remote.
+        # Case 2: actionlog.status = 'successful' BUT it was recently performed
+        # so sync might not have the synced back change
+        # For both cases above, do /not/ overwrite message.categories
+        # Case 3: actionlog.status = 'failed' BUT it failed recently,
+        # so in this case as well, do /not/ overwrite message.categories so as
+        # to avoid confusing the API user.
+        # TODO[k]/(emfree): Implement proper rollback of local state
+        return

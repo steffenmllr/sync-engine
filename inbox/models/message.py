@@ -7,7 +7,7 @@ from flanker import mime
 from sqlalchemy import (Column, Integer, BigInteger, String, DateTime,
                         Boolean, Enum, ForeignKey, Index)
 from sqlalchemy.dialects.mysql import LONGBLOB
-from sqlalchemy.orm import relationship, backref, validates
+from sqlalchemy.orm import relationship, backref, validates, object_session
 from sqlalchemy.sql.expression import false
 from sqlalchemy.ext.associationproxy import association_proxy
 
@@ -15,11 +15,12 @@ from inbox.util.html import plaintext2html, strip_tags
 from inbox.sqlalchemy_ext.util import JSON, json_field_too_long
 from inbox.util.addr import parse_mimepart_address_header
 from inbox.util.misc import parse_references, get_internaldate
+from inbox.security.blobstorage import encode_blob, decode_blob
 from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.base import MailSyncBase
 from inbox.models.namespace import Namespace
 from inbox.models.category import Category
-from inbox.security.blobstorage import encode_blob, decode_blob
+from inbox.models.util import update_message_categories
 from inbox.log import get_logger
 log = get_logger()
 
@@ -507,9 +508,12 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         if account.category_type == 'folder':
             categories = [select_category(categories)]
 
-        self.categories = categories
-
-        # TODO[k]: Update from pending actions here?
+        if self.categories_change_count == 0:
+            # No syncback actions scheduled, so there is no danger of
+            # overwriting modified local state.
+            self.categories = categories
+        else:
+            update_message_categories(object_session(self), self, categories)
 
 # Need to explicitly specify the index length for table generation with MySQL
 # 5.6 when columns are too long to be fully indexed with utf8mb4 collation.
