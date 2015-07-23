@@ -115,6 +115,9 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     # The uid as set in the X-INBOX-ID header of a sent message we create
     inbox_uid = Column(String(64), nullable=True, index=True)
 
+    categories_change_count = Column(Integer, nullable=False,
+                                     server_default='0')
+
     def regenerate_inbox_uid(self):
         """
         The value of inbox_uid is simply the draft public_id and version,
@@ -508,7 +511,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         if account.category_type == 'folder':
             categories = [select_category(categories)]
 
-        if self.categories_change_count == 0:
+        if not self.categories_change_count:
             # No syncback actions scheduled, so there is no danger of
             # overwriting modified local state.
             self.categories = categories

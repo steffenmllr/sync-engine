@@ -3,6 +3,8 @@ import time
 import math
 from collections import OrderedDict
 
+from sqlalchemy.sql.expression import func
+
 CHUNK_SIZE = 1000
 
 
@@ -165,34 +167,33 @@ def _batch_delete(engine, table, (column, id_)):
 
 
 def update_message_categories(db_session, message, synced_categories):
-    from inbox.models.actionlog import ActionLog
+    from inbox.models.action_log import ActionLog
 
     now = datetime.utcnow()
 
     # We make the simplifying assumption that only the latest syncback action
-    # matters, since it reflects the current local state
-
+    # matters, since it reflects the current local state.
     # STOPSHIP TODO[k]: Optimize this query
-    actionlog = db_session.query(ActionLog).filter(
+    actionlog_id = db_session.query(func.max(ActionLog.id)).filter(
         ActionLog.namespace_id == message.namespace_id,
         ActionLog.table_name == 'message',
         ActionLog.record_id == message.id,
-        ActionLog.action.in_(['change_labels', 'move'])).order_by(
-        ActionLog.id.desc()).first()
+        ActionLog.action.in_(['change_labels', 'move']))
+    actionlog = db_session.query(ActionLog).get(actionlog_id)
 
     if actionlog.status == 'successful' and \
-            (now - actionlog.updated_at).seconds >= 10:
+            (now - actionlog.updated_at).seconds >= 90:
         # We performed a local change that was synced back to the remote,
-        # long enough ago for sync to pick it up.
-        # So, safe to overwrite. Also reset the local_changes counter.
+        # long enough ago for sync to pick it up (on average and with an error
+        # margin). So, safe to overwrite. Also reset the local_changes counter.
         message.categories = synced_categories
         message.categories_change_count = 0
 
     elif actionlog.status == 'failed' and \
-            (now - actionlog.updated_at).seconds >= 10:
-        # The syncback action failed, long enough ago to overwrite the local
-        # changes made - needed in order to pick up future changes to
-        # the message.
+            (now - actionlog.updated_at).seconds >= 90:
+        # The syncback action failed, long enough ago (on average and with an
+        # error margin) to overwrite the local changes made - needed in order
+        # to pick up future changes to the message.
         # So, overwrite and reset the local_changes counter too.
         # TODO[k]/(emfree): Implement proper rollback of local state
         message.categories = synced_categories
