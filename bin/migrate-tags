@@ -61,6 +61,8 @@ def set_labels_for_imapuids(account, db_session, updated_since):
         count += 1
         try:
             uid_id = uid.id
+            if updated_since is not None and uid.updated_at < updated_since:
+                continue
             populate_labels(uid, account, db_session)
             if updated_since is not None and uid.message is not None:
                 # Make sure we subsequently also recompute the message's
@@ -135,13 +137,9 @@ def migrate_messages(account_id, updated_since):
                 messages = db_session.query(Message). \
                     filter(Message.namespace_id == namespace.id,
                            Message.deleted_at == None)
-                if updated_since is not None:
-                    messages = messages.filter(Message.updated_at >
-                                               updated_since)
-
                 messages = messages.options(
                     load_only(Message.id, Message.is_read, Message.is_starred,
-                              Message.is_draft),
+                              Message.is_draft, Message.updated_at),
                     joinedload(Message.namespace).load_only('id'),
                     subqueryload(Message.imapuids),
                     subqueryload(Message.easuids),
@@ -153,6 +151,10 @@ def migrate_messages(account_id, updated_since):
                     return
                 for message in messages:
                     message_id = message.id
+                    if updated_since is not None and message.updated_at < updated_since:
+                        log.info('Skipping message', namespace_id=namespace.id,
+                                 message_id=message_id)
+                        continue
                     try:
                         message.update_metadata(message.is_draft)
                     except IndexError:
