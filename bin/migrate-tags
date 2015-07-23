@@ -94,8 +94,9 @@ def create_categories_for_gmail_folders(account, db_session):
                 name=folder.canonical_name, display_name=folder.name,
                 type_='folder')
             folder.category = cat
-        Label.find_or_create(db_session, account, folder.name,
-                             folder.canonical_name)
+        if folder.name is not None:
+            Label.find_or_create(db_session, account, folder.name,
+                                 folder.canonical_name)
     db_session.commit()
 
 
@@ -132,7 +133,8 @@ def migrate_messages(account_id, updated_since):
             try:
                 message_id = None
                 messages = db_session.query(Message). \
-                    filter(Message.namespace_id == namespace.id)
+                    filter(Message.namespace_id == namespace.id,
+                           Message.deleted_at == None)
                 if updated_since is not None:
                     messages = messages.filter(Message.updated_at >
                                                updated_since)
@@ -166,8 +168,10 @@ def migrate_messages(account_id, updated_since):
 
 
 def migrate_account(account_id, updated_since):
+    log.info('Migrating account', account_id=account_id)
     migrate_account_metadata(account_id, updated_since)
     migrate_messages(account_id, updated_since)
+    log.info('Migrated account', account_id=account_id)
 
 
 @click.command()
