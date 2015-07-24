@@ -123,7 +123,7 @@ def run(start, task_id, num_tasks):
             migrate_account_metadata(id_)
             log.info('Updated metadata for account', account_id=id_)
         migrate_imapuids(start, end, task_id, num_tasks)
-        migrate_messages(end, end, task_id, num_tasks)
+        migrate_messages(start, end, task_id, num_tasks)
         log.info('Migrated UIDs and messages in update window',
                  start=start, end=end)
         start = end
