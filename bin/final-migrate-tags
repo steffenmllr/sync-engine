@@ -95,7 +95,8 @@ def migrate_messages(start, end, task_id, num_tasks):
             for message in messages:
                 if message.updated_at > end:
                     return
-                message.update_metadata(message.is_draft)
+                with db_session.no_autoflush:
+                    message.update_metadata(message.is_draft)
                 log.info('Updated message', message_id=message.id,
                          updated_at=message.updated_at, count=count)
                 count += 1
