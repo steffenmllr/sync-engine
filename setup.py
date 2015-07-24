@@ -82,7 +82,8 @@ setup(
              'bin/get-object',
              'bin/syncback-service',
              'bin/test_contact_groups',
-             'bin/migrate-tags'],
+             'bin/migrate-tags',
+             'bin/final-migrate-tags'],
 
     # See:
     # https://pythonhosted.org/setuptools/setuptools.html#dynamic-discovery-of-services-and-plugins
