@@ -131,7 +131,7 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
     def tags(self):
         # For backwards-compatibility -- remove after deprecating tags API
         resp = [
-            {'name': c.display_name,
+            {'name': (c.name or c.display_name),
              # Preserves behavior where "canonical" tags would have their role
              # as id (e.g., "inbox"
              'id': (c.name or c.public_id)} for c in self.categories
