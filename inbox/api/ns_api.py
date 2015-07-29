@@ -498,7 +498,8 @@ def folders_labels_create_api():
     g.db_session.flush()
 
     if category_type == 'folder':
-        schedule_action('create_folder', category, g.namespace.id, g.db_session)
+        schedule_action('create_folder', category, g.namespace.id,
+                        g.db_session)
     else:
         schedule_action('create_label', category, g.namespace.id, g.db_session)
 
