@@ -12,7 +12,6 @@ from inbox.mailsync.backends.base import (MailsyncError,
                                           mailsync_session_scope,
                                           thread_polling, thread_finished)
 from inbox.mailsync.backends.imap.generic import FolderSyncEngine
-from inbox.mailsync.backends.imap.condstore import CondstoreFolderSyncEngine
 from inbox.heartbeat.status import clear_heartbeat_status
 from inbox.mailsync.gc import DeleteHandler
 log = get_logger()
@@ -31,28 +30,15 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
         Seconds to wait between checking for new folders to sync.
     poll_frequency: Integer
         Seconds to wait between polling for the greenlets spawned
-    refresh_flags_max: Integer
-        the maximum number of UIDs for which we'll check flags
-        periodically.
-
     """
     def __init__(self, account,
                  heartbeat=1, refresh_frequency=30, poll_frequency=30,
-                 retry_fail_classes=[], refresh_flags_max=2000):
+                 retry_fail_classes=[]):
         self.refresh_frequency = refresh_frequency
         self.poll_frequency = poll_frequency
         self.syncmanager_lock = BoundedSemaphore(1)
-        self.refresh_flags_max = refresh_flags_max
         self.saved_remote_folders = None
-
-        provider_supports_condstore = account.provider_info.get('condstore',
-                                                                False)
-        account_supports_condstore = getattr(account, 'supports_condstore',
-                                             False)
-        if provider_supports_condstore or account_supports_condstore:
-            self.sync_engine_class = CondstoreFolderSyncEngine
-        else:
-            self.sync_engine_class = FolderSyncEngine
+        self.sync_engine_class = FolderSyncEngine
 
         self.folder_monitors = Group()
 
@@ -156,7 +142,6 @@ class ImapSyncMonitor(BaseMailSyncMonitor):
                                             self.provider_name,
                                             self.poll_frequency,
                                             self.syncmanager_lock,
-                                            self.refresh_flags_max,
                                             self.retry_fail_classes)
             self.folder_monitors.start(thread)
             while not thread_polling(thread) and \
