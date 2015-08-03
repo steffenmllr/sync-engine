@@ -1,13 +1,19 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response, g
 from flask.ext.restful import reqparse
 from werkzeug.exceptions import default_exceptions, HTTPException
+from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.api.kellogs import APIEncoder
 from nylas.logging import get_logger
 from inbox.models import Namespace, Account
-from inbox.models.session import session_scope
+from inbox.models.session import session_scope, InboxSession
 from inbox.api.validation import (bounded_str, ValidatableArgument,
                                   strict_parse_args, limit)
+from inbox.api.validation import valid_public_id
+from inbox.api.err import err
+
+from inbox.ignition import main_engine
+engine = main_engine()
 
 from ns_api import app as ns_api
 from ns_api import DEFAULT_LIMIT
@@ -37,7 +43,45 @@ for code in default_exceptions.iterkeys():
 
 @app.before_request
 def auth():
-    pass  # no auth in dev VM
+    """ Check for account ID on all non-root URLS """
+    if request.path in ('/', '/n', '/n/') or request.path.startswith('/w/'):
+        return
+    # import pdb; pdb.set_trace()
+    g.db_session = InboxSession(engine)
+
+    if request.path.startswith('/n/'):
+        ns_parts = filter(None, request.path.split('/'))
+        namespace_public_id = ns_parts[1]
+        valid_public_id(namespace_public_id)
+
+        try:
+            g.namespace = g.db_session.query(Namespace) \
+                .filter(Namespace.public_id == namespace_public_id).one()
+            g.encoder = APIEncoder(g.namespace.public_id)
+        except NoResultFound:
+            return err(404, "Unknown namespace ID")
+
+    else:
+        if not request.authorization or not request.authorization.username:
+            return make_response((
+                "Could not verify access credential.", 401,
+                {'WWW-Authenticate': 'Basic realm="API '
+                 'Access Token Required"'}))
+
+        g.account_id = request.authorization.username
+
+        try:
+            valid_public_id(g.account_id)
+            g.account = g.db_session.query(Account) \
+                .filter(Account.public_id == g.account_id).one()
+            g.namespace = g.account.namespace
+            g.encoder = APIEncoder(g.namespace.public_id)
+
+        except NoResultFound:
+            return make_response((
+                "Could not verify access credential.", 401,
+                {'WWW-Authenticate': 'Basic realm="API '
+                 'Access Token Required"'}))
 
 
 @app.after_request
@@ -50,6 +94,30 @@ def finish(response):
             'GET,PUT,POST,DELETE,OPTIONS'
         response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
+
+
+@app.route('/accounts')
+def home():
+    """ Return all account objects """
+    with session_scope() as db_session:
+        parser = reqparse.RequestParser(argument_class=ValidatableArgument)
+        parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
+                            location='args')
+        parser.add_argument('offset', default=0, type=int, location='args')
+        parser.add_argument('email_address', type=bounded_str, location='args')
+        args = strict_parse_args(parser, request.args)
+
+        query = db_session.query(Account)
+        if args['email_address']:
+            query = query.filter_by(email_address=args['email_address'])
+
+        query = query.limit(args['limit'])
+        if args['offset']:
+            query = query.offset(args['offset'])
+
+        accounts = query.all()
+        encoder = APIEncoder()
+        return encoder.jsonify(accounts)
 
 
 @app.route('/n/')
@@ -80,14 +148,15 @@ def ns_all():
         return encoder.jsonify(namespaces)
 
 
-@app.route('/')
-def home():
-    return """
-<html><body>
-    Check out the <strong><pre style="display:inline;">docs</pre></strong>
-    folder for how to use this API.
-</body></html>
-"""
+@app.route('/logout')
+def logout():
+    """ Utility function used to force browsers to reset cached HTTP Basic Auth
+        credentials """
+    return make_response((
+        "<meta http-equiv='refresh' content='0; url=/''>.",
+        401,
+        {'WWW-Authenticate': 'Basic realm="API Access Token Required"'}))
+
 
 app.register_blueprint(ns_api)  # /n/<namespace_id>/...
 app.register_blueprint(webhooks_api)  # /w/...

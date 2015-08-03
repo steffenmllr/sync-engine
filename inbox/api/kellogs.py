@@ -5,7 +5,7 @@ from json import JSONEncoder, dumps
 from flask import Response
 
 from inbox.models import (Message, Contact, Calendar, Event, When,
-                          Thread, Namespace, Block, Category)
+                          Thread, Namespace, Block, Category, Account)
 from inbox.models.event import RecurringEvent, RecurringEventOverride
 from nylas.logging import get_logger
 log = get_logger()
@@ -96,9 +96,22 @@ def _encode(obj, namespace_public_id=None, expand=False):
             'name': obj.account.name,
             'provider': obj.account.provider,
             'organization_unit': obj.account.category_type
+        }
+
+    elif isinstance(obj, Account):
+        return {
+            'id': obj.public_id,
+            'object': 'account',
+            'email_address': obj.email_address,
+            'name': obj.name,
+            'organization_unit': obj.category_type,
+
+            'provider': obj.provider,
+            # TODO add settings
+            # TODO add capabilities/scope (i.e. mail, contacts, cal, etc.)
+
             # 'status':  'syncing',  # TODO what are values here
             # 'last_sync':  1398790077,  # tuesday 4/29
-            # 'scope': ['mail', 'contacts']
         }
 
     elif isinstance(obj, Message):
