@@ -44,7 +44,8 @@ for code in default_exceptions.iterkeys():
 @app.before_request
 def auth():
     """ Check for account ID on all non-root URLS """
-    if request.path in ('/', '/n', '/n/') or request.path.startswith('/w/'):
+    if request.path in ('/accounts', '/', '/n', '/n/') \
+                       or request.path.startswith('/w/'):
         return
     # import pdb; pdb.set_trace()
     g.db_session = InboxSession(engine)
@@ -159,4 +160,5 @@ def logout():
 
 
 app.register_blueprint(ns_api)  # /n/<namespace_id>/...
+app.register_blueprint(ns_api, url_prefix='/n/<namespace_public_id>')
 app.register_blueprint(webhooks_api)  # /w/...

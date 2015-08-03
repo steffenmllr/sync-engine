@@ -83,7 +83,8 @@ if config.get('DEBUG_PROFILING_ON'):
 
 @app.url_value_preprocessor
 def pull_lang_code(endpoint, values):
-    g.namespace_public_id = values.pop('namespace_public_id')
+    if 'namespace_public_id' in values:
+        g.namespace_public_id = values.pop('namespace_public_id')
 
 
 @app.before_request
@@ -106,6 +107,10 @@ def start():
     g.parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
                           location='args')
     g.parser.add_argument('offset', default=0, type=offset, location='args')
+
+    if hasattr(g, 'namespace_public_id') and \
+            not g.namespace_public_id == g.namespace.public_id:
+        return err(404, "Unknown namespace ID")
 
 
 @app.after_request
@@ -156,12 +161,8 @@ def one_account():
 #
 # Threads
 #
-#
-@app.route('/threads/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/threads/')  # legacy
-def thread_query_api(namespace_id=None):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/threads/')
+def thread_query_api():
     g.parser.add_argument('subject', type=bounded_str, location='args')
     g.parser.add_argument('to', type=bounded_str, location='args')
     g.parser.add_argument('from', type=bounded_str, location='args')
@@ -243,11 +244,8 @@ def thread_search_api(namespace_id):
     return g.encoder.jsonify(results)
 
 
-@app.route('/threads/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/threads/<public_id>')  # legacy
-def thread_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/threads/<public_id>')
+def thread_api(public_id):
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
     # Use a new encoder object with the expand parameter set.
@@ -265,12 +263,8 @@ def thread_api(namespace_id, public_id):
 #
 # Update thread
 #
-@app.route('/threads/<public_id>', methods=['PUT'],
-                                   defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/threads/<public_id>', methods=['PUT'])
-def thread_api_update(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/threads/<public_id>', methods=['PUT'])
+def thread_api_update(public_id):
     try:
         valid_public_id(public_id)
         thread = g.db_session.query(Thread).filter(
@@ -297,11 +291,8 @@ def thread_api_delete(public_id):
 ##
 # Messages
 ##
-@app.route('/messages/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/messages')
-def message_query_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/messages/')
+def message_query_api():
     g.parser.add_argument('subject', type=bounded_str, location='args')
     g.parser.add_argument('to', type=bounded_str, location='args')
     g.parser.add_argument('from', type=bounded_str, location='args')
@@ -384,12 +375,8 @@ def message_search_api(namespace_id):
     return g.encoder.jsonify(results)
 
 
-@app.route('/messages/<public_id>', methods=['GET'],
-                                    defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/messages/<public_id>', methods=['GET'])
-def message_read_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/messages/<public_id>', methods=['GET'])
+def message_read_api(public_id):
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
     encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
@@ -415,12 +402,8 @@ def message_read_api(namespace_id, public_id):
     return encoder.jsonify(message)
 
 
-@app.route('/messages/<public_id>', methods=['PUT'],
-                                    defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/messages/<public_id>', methods=['PUT'])
-def message_update_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/messages/<public_id>', methods=['PUT'])
+def message_update_api(public_id):
     try:
         valid_public_id(public_id)
         message = g.db_session.query(Message).filter(
@@ -436,11 +419,8 @@ def message_update_api(namespace_id, public_id):
 
 
 # TODO Deprecate this endpoint once API usage falls off
-@app.route('/messages/<public_id>/rfc2822', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/messages/<public_id>/rfc2822')
-def raw_message_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/messages/<public_id>/rfc2822', methods=['GET'])
+def raw_message_api(public_id):
     try:
         valid_public_id(public_id)
         message = g.db_session.query(Message).filter(
@@ -464,13 +444,9 @@ def raw_message_api(namespace_id, public_id):
 
 
 # Folders / Labels
-@app.route('/folders/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/folders')
-@app.route('/labels/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/labels')
-def folders_labels_query_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/folders')
+@app.route('/labels')
+def folders_labels_query_api():
     g.parser.add_argument('view', type=bounded_str, location='args')
     args = strict_parse_args(g.parser, request.args)
     if args['view'] == 'count':
@@ -492,19 +468,13 @@ def folders_labels_query_api(namespace_id):
     return g.encoder.jsonify(results)
 
 
-@app.route('/folders/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/folders/<public_id>')
-def folder_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/folders/<public_id>')
+def folder_api(public_id):
     return folders_labels_api_impl(public_id)
 
 
-@app.route('/labels/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/labels/<public_id>')
-def label_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/labels/<public_id>')
+def label_api(public_id):
     return folders_labels_api_impl(public_id)
 
 
@@ -519,13 +489,9 @@ def folders_labels_api_impl(public_id):
     return g.encoder.jsonify(category)
 
 
-@app.route('/folders/', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/folders/', methods=['POST'])
-@app.route('/labels/', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/labels/', methods=['POST'])
-def folders_labels_create_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/folders', methods=['POST'])
+@app.route('/labels', methods=['POST'])
+def folders_labels_create_api():
     category_type = g.namespace.account.category_type
     data = request.get_json(force=True)
     display_name = data.get('display_name')
@@ -542,21 +508,14 @@ def folders_labels_create_api(namespace_id):
         schedule_action('create_folder', category, g.namespace.id,
                         g.db_session)
     else:
-        schedule_action('create_label', category, g.namespace.id,
-                        g.db_session)
+        schedule_action('create_label', category, g.namespace.id, g.db_session)
 
     return g.encoder.jsonify(category)
 
 
-@app.route('/folders/<public_id>', methods=['PUT'],
-                                   defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/folders/', methods=['PUT'])
-@app.route('/labels/<public_id>', methods=['PUT'],
-                                  defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/labels/', methods=['PUT'])
-def folder_label_update_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/folders/<public_id>', methods=['PUT'])
+@app.route('/labels/<public_id>', methods=['PUT'])
+def folder_label_update_api(public_id):
     category_type = g.namespace.account.category_type
     valid_public_id(public_id)
     try:
@@ -594,11 +553,8 @@ def folder_label_update_api(namespace_id, public_id):
 # -- Begin tags API shim
 
 
-@app.route('/tags', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/tags')
-def tag_query_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/tags')
+def tag_query_api():
     categories = g.db_session.query(Category). \
         filter(Category.namespace_id == g.namespace.id)
     resp = [
@@ -611,11 +567,8 @@ def tag_query_api(namespace_id):
     return g.encoder.jsonify(resp)
 
 
-@app.route('/tags/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/tags/<public_id>')
-def tag_detail_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/tags/<public_id>')
+def tag_detail_api(public_id):
     # Interpret former special public ids for 'canonical' tags.
     if public_id in ('inbox', 'sent', 'archive', 'important', 'trash', 'spam',
                      'all'):
@@ -665,11 +618,8 @@ def tag_detail_api(namespace_id, public_id):
 #
 # Contacts
 ##
-@app.route('/contacts/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/contacts')
-def contact_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/contacts/', methods=['GET'])
+def contact_api():
     g.parser.add_argument('filter', type=bounded_str, default='',
                           location='args')
     g.parser.add_argument('view', type=bounded_str, location='args')
@@ -698,11 +648,8 @@ def contact_api(namespace_id):
     return g.encoder.jsonify(results)
 
 
-@app.route('/contacts/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/contacts/<public_id>')
-def contact_read_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/contacts/<public_id>', methods=['GET'])
+def contact_read_api(public_id):
     # Get all data for an existing contact.
     valid_public_id(public_id)
     result = inbox.contacts.crud.read(g.namespace, g.db_session, public_id)
@@ -714,11 +661,8 @@ def contact_read_api(namespace_id, public_id):
 ##
 # Events
 ##
-@app.route('/events/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/events/')
-def event_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/events/', methods=['GET'])
+def event_api():
     g.parser.add_argument('event_id', type=valid_public_id, location='args')
     g.parser.add_argument('calendar_id', type=valid_public_id, location='args')
     g.parser.add_argument('title', type=bounded_str, location='args')
@@ -758,11 +702,8 @@ def event_api(namespace_id):
     return g.encoder.jsonify(results)
 
 
-@app.route('/events/', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/events/', methods=['POST'])
-def event_create_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/events/', methods=['POST'])
+def event_create_api():
     g.parser.add_argument('notify_participants', type=strict_bool,
                           location='args')
     args = strict_parse_args(g.parser, request.args)
@@ -819,12 +760,9 @@ def event_create_api(namespace_id):
     return g.encoder.jsonify(event)
 
 
-@app.route('/events/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/events/<public_id>')
-def event_read_api(namespace_id, public_id):
+@app.route('/events/<public_id>', methods=['GET'])
+def event_read_api(public_id):
     """Get all data for an existing event."""
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
     valid_public_id(public_id)
     try:
         event = g.db_session.query(Event).filter(
@@ -835,12 +773,8 @@ def event_read_api(namespace_id, public_id):
     return g.encoder.jsonify(event)
 
 
-@app.route('/events/<public_id>', methods=['PUT'],
-                                  defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/events/<public_id>', methods=['PUT'])
-def event_update_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/events/<public_id>', methods=['PUT'])
+def event_update_api(public_id):
     g.parser.add_argument('notify_participants', type=strict_bool,
                           location='args')
     args = strict_parse_args(g.parser, request.args)
@@ -889,12 +823,8 @@ def event_update_api(namespace_id, public_id):
     return g.encoder.jsonify(event)
 
 
-@app.route('/events/<public_id>', methods=['DELETE'],
-                                  defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/events/<public_id>', methods=['DELETE'])
-def event_delete_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/events/<public_id>', methods=['DELETE'])
+def event_delete_api(public_id):
     g.parser.add_argument('notify_participants', type=strict_bool,
                           location='args')
     args = strict_parse_args(g.parser, request.args)
@@ -935,11 +865,8 @@ def event_delete_api(namespace_id, public_id):
     return g.encoder.jsonify(None)
 
 
-@app.route('/send-rsvp', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/send-rsvp', methods=['POST'])
-def event_rsvp_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/send-rsvp', methods=['POST'])
+def event_rsvp_api():
     data = request.get_json(force=True)
 
     event_id = data.get('event_id')
@@ -1015,11 +942,8 @@ def event_rsvp_api(namespace_id):
 #
 # Files
 #
-@app.route('/files/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/files')
-def files_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/files/', methods=['GET'])
+def files_api():
     g.parser.add_argument('filename', type=bounded_str, location='args')
     g.parser.add_argument('message_id', type=valid_public_id, location='args')
     g.parser.add_argument('content_type', type=bounded_str, location='args')
@@ -1040,11 +964,8 @@ def files_api(namespace_id):
     return g.encoder.jsonify(files)
 
 
-@app.route('/files/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/files/<public_id>')
-def file_read_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/files/<public_id>', methods=['GET'])
+def file_read_api(public_id):
     valid_public_id(public_id)
     try:
         f = g.db_session.query(Block).filter(
@@ -1055,12 +976,8 @@ def file_read_api(namespace_id, public_id):
         raise NotFoundError("Couldn't find file {0} ".format(public_id))
 
 
-@app.route('/files/<public_id>', methods=['DELETE'],
-                                 defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/files/<public_id>', methods=['DELETE'])
-def file_delete_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/files/<public_id>', methods=['DELETE'])
+def file_delete_api(public_id):
     valid_public_id(public_id)
     try:
         f = g.db_session.query(Block).filter(
@@ -1086,11 +1003,8 @@ def file_delete_api(namespace_id, public_id):
 # You can test with
 # $ curl http://localhost:5555/n/4s4iz36h36w17kumggi36ha2b/files \
 # --form upload=@dancingbaby.gif
-@app.route('/files/', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/files', methods=['POST'])
-def file_upload_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/files/', methods=['POST'])
+def file_upload_api():
     all_files = []
     for name, uploaded in request.files.iteritems():
         g.log.info("Processing upload '{0}'".format(name))
@@ -1110,11 +1024,8 @@ def file_upload_api(namespace_id):
 #
 # File downloads
 #
-@app.route('/files/<public_id>/download', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/files/<public_id>/download')
-def file_download_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/files/<public_id>/download')
+def file_download_api(public_id):
     valid_public_id(public_id)
     try:
         f = g.db_session.query(Block).filter(
@@ -1168,11 +1079,8 @@ def file_download_api(namespace_id, public_id):
 ##
 # Calendars
 ##
-@app.route('/calendars/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/calendars')
-def calendar_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/calendars/', methods=['GET'])
+def calendar_api():
     g.parser.add_argument('view', type=view, location='args')
 
     args = strict_parse_args(g.parser, request.args)
@@ -1196,12 +1104,9 @@ def calendar_api(namespace_id):
     return g.encoder.jsonify(results)
 
 
-@app.route('/calendars/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/calendars/<public_id>')
-def calendar_read_api(namespace_id, public_id):
+@app.route('/calendars/<public_id>', methods=['GET'])
+def calendar_read_api(public_id):
     """Get all data for an existing calendar."""
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
     valid_public_id(public_id)
 
     try:
@@ -1220,11 +1125,8 @@ def calendar_read_api(namespace_id, public_id):
 # TODO(emfree, kavya): Systematically validate user input, and return
 # meaningful errors for invalid input.
 
-@app.route('/drafts/', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/drafts/')
-def draft_query_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/drafts/', methods=['GET'])
+def draft_query_api():
     g.parser.add_argument('subject', type=bounded_str, location='args')
     g.parser.add_argument('to', type=bounded_str, location='args')
     g.parser.add_argument('cc', type=bounded_str, location='args')
@@ -1277,11 +1179,8 @@ def draft_query_api(namespace_id):
     return g.encoder.jsonify(drafts)
 
 
-@app.route('/drafts/<public_id>', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/drafts/<public_id>')
-def draft_get_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/drafts/<public_id>', methods=['GET'])
+def draft_get_api(public_id):
     valid_public_id(public_id)
     draft = g.db_session.query(Message).filter(
         Message.public_id == public_id,
@@ -1291,23 +1190,16 @@ def draft_get_api(namespace_id, public_id):
     return g.encoder.jsonify(draft)
 
 
-@app.route('/drafts/', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/drafts', methods=['POST'])
-def draft_create_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/drafts/', methods=['POST'])
+def draft_create_api():
     data = request.get_json(force=True)
     draft = create_message_from_json(data, g.namespace, g.db_session,
                                      is_draft=True)
     return g.encoder.jsonify(draft)
 
 
-@app.route('/drafts/<public_id>', methods=['PUT'],
-                                  defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/drafts/<public_id>', methods=['PUT'])
-def draft_update_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/drafts/<public_id>', methods=['PUT'])
+def draft_update_api(public_id):
     data = request.get_json(force=True)
     original_draft = get_draft(public_id, data.get('version'), g.namespace.id,
                                g.db_session)
@@ -1338,12 +1230,8 @@ def draft_update_api(namespace_id, public_id):
     return g.encoder.jsonify(draft)
 
 
-@app.route('/drafts/<public_id>', methods=['DELETE'],
-                                  defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/drafts/<public_id>', methods=['DELETE'])
-def draft_delete_api(namespace_id, public_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/drafts/<public_id>', methods=['DELETE'])
+def draft_delete_api(public_id):
     data = request.get_json(force=True)
     # Validate draft id, version, etc.
     draft = get_draft(public_id, data.get('version'), g.namespace.id,
@@ -1353,11 +1241,8 @@ def draft_delete_api(namespace_id, public_id):
     return g.encoder.jsonify(result)
 
 
-@app.route('/send', methods=['POST'], defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/send', methods=['POST'])
-def draft_send_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/send', methods=['POST'])
+def draft_send_api():
     if request.content_type == "message/rfc822":
         msg = create_draft_from_mime(g.namespace.account, request.data,
                                      g.db_session)
@@ -1385,13 +1270,9 @@ def draft_send_api(namespace_id):
 ##
 # Client syncing
 ##
-@app.route('/delta', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/delta')
-@app.route('/delta/longpoll', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/delta/longpoll')
-def sync_deltas(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/delta')
+@app.route('/delta/longpoll')
+def sync_deltas():
     g.parser.add_argument('cursor', type=valid_public_id, location='args',
                           required=True)
     g.parser.add_argument('exclude_types', type=valid_delta_object_types,
@@ -1462,12 +1343,8 @@ def sync_deltas(namespace_id):
     return g.encoder.jsonify(response)
 
 
-@app.route('/delta/generate_cursor', methods=['POST'],
-                                     defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/delta/generate_cursor', methods=['POST'])
-def generate_cursor(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/delta/generate_cursor', methods=['POST'])
+def generate_cursor():
     data = request.get_json(force=True)
 
     if data.keys() != ['start'] or not isinstance(data['start'], int):
@@ -1490,11 +1367,9 @@ def generate_cursor(namespace_id):
 ##
 # Streaming
 ##
-@app.route('/delta/streaming', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/delta/streaming')
-def stream_changes(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+
+@app.route('/delta/streaming')
+def stream_changes():
     g.parser.add_argument('timeout', type=float, location='args')
     g.parser.add_argument('cursor', type=valid_public_id, location='args',
                           required=True)
@@ -1550,11 +1425,9 @@ def stream_changes(namespace_id):
 ##
 # Groups and Contact Rankings
 ##
-@app.route('/groups/intrinsic', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/groups/intrinsic')
-def groups_intrinsic(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+
+@app.route('/groups/intrinsic')
+def groups_intrinsic():
     g.parser.add_argument('force_recalculate', type=strict_bool,
                           location='args')
     args = strict_parse_args(g.parser, request.args)
@@ -1596,11 +1469,8 @@ def groups_intrinsic(namespace_id):
     return g.encoder.jsonify(result)
 
 
-@app.route('/contacts/rankings', defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/contacts/rankings')
-def contact_rankings(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/contacts/rankings')
+def contact_rankings():
     g.parser.add_argument('force_recalculate', type=strict_bool,
                           location='args')
     args = strict_parse_args(g.parser, request.args)
