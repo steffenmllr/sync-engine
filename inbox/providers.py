@@ -260,7 +260,25 @@ get_default_providers = lambda: {
         "mx_servers": [
             # Office365
             "mail.protection.outlook.com", "mail.eo.outlook.com",
-            # Outlook.com
+        ],
+    },
+    "outlook": {
+        "auth": "password",
+        "domains": [
+            "onmicrosoft.com",
+            "exchange.mit.edu",
+            "hotmail.com", "outlook.com", "outlook.com.ar",
+            "outlook.com.au", "outlook.at", "outlook.be",
+            "outlook.com.br", "outlook.cl", "outlook.cz", "outlook.dk",
+            "outlook.fr", "outlook.de", "outlook.com.gr",
+            "outlook.co.il", "outlook.in", "outlook.co.id",
+            "outlook.ie", "outlook.it", "outlook.hu", "outlook.jp",
+            "outlook.kr", "outlook.lv", "outlook.my", "outlook.co.nz",
+            "outlook.com.pe", "outlook.ph", "outlook.pt", "outlook.sa",
+            "outlook.sg", "outlook.sk", "outlook.es", "outlook.co.th",
+            "outlook.com.tr", "outlook.com.vn",
+        ],
+        "mx_servers": [
             ".*.pamx1.hotmail.com", "mx.*.hotmail.com",
         ],
     },
