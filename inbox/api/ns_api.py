@@ -20,6 +20,7 @@ from inbox.api.sending import send_draft, send_raw_mime
 from inbox.api.update import update_message, update_thread
 from inbox.api.kellogs import APIEncoder
 from inbox.api import filtering
+from inbox.api.cache import NylasORMCache
 from inbox.api.validation import (get_attachments, get_calendar,
                                   get_recipients, get_draft, valid_public_id,
                                   valid_event, valid_event_update, timestamp,
@@ -373,14 +374,18 @@ def message_read_api(public_id):
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
     encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
+    cache = NylasORMCache.cache_for_model(Message)
 
-    try:
-        valid_public_id(public_id)
-        message = g.db_session.query(Message).filter(
-            Message.public_id == public_id,
-            Message.namespace_id == g.namespace.id).one()
-    except NoResultFound:
-        raise NotFoundError("Couldn't find message {0} ".format(public_id))
+    message = cache.get(public_id)
+    if not message:
+        try:
+            valid_public_id(public_id)
+            message = g.db_session.query(Message).filter(
+                Message.public_id == public_id,
+                Message.namespace_id == g.namespace.id).one()
+            cache.set(public_id, message)
+        except NoResultFound:
+            raise NotFoundError("Couldn't find message {0} ".format(public_id))
 
     if request.headers.get('Accept', None) == 'message/rfc822':
         if message.full_body is not None:
