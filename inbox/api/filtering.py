@@ -1,9 +1,10 @@
-from sqlalchemy import and_, or_, desc, asc, func
+from sqlalchemy import and_, or_, desc, asc, func, bindparam
 from sqlalchemy.orm import subqueryload, contains_eager
 from inbox.models import (Contact, Event, Calendar, Message,
                           MessageContactAssociation, Thread,
                           Block, Part, MessageCategory, Category)
 from inbox.models.event import RecurringEvent
+from inbox.sqlalchemy_ext.util import bakery
 
 
 def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
@@ -149,123 +150,156 @@ def messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
                        last_message_after, filename, in_, unread, starred,
                        limit, offset, view, db_session):
 
+    param_dict = {
+        'namespace_id': namespace_id,
+        'drafts': drafts,
+        'subject': subject,
+        'from_addr': from_addr,
+        'to_addr': to_addr,
+        'cc_addr': cc_addr,
+        'bcc_addr': bcc_addr,
+        'any_email': any_email,
+        'thread_public_id': thread_public_id,
+        'started_before': started_before,
+        'started_after': started_after,
+        'last_message_before': last_message_before,
+        'last_message_after': last_message_after,
+        'filename': filename,
+        'in_': in_,
+        'in_id': in_,  # Hack because of bindparam / type coercion
+        'unread': unread,
+        'starred': starred,
+        'limit': limit,
+        'offset': offset
+    }
+
     if view == 'count':
-        query = db_session.query(func.count(Message.id))
+        query = bakery(lambda s: s.query(func.count(Message.id)))
     elif view == 'ids':
-        query = db_session.query(Message.public_id)
+        query = bakery(lambda s: s.query(Message.public_id))
     else:
-        query = db_session.query(Message)
-        query = query.options(contains_eager(Message.thread))
+        query = bakery(lambda s: s.query(Message))
+        query += lambda q: q.options(contains_eager(Message.thread))
 
-    query = query.join(Thread)
+    query += lambda q: q.join(Thread)
 
-    filters = [Message.namespace_id == namespace_id]
-    if drafts:
-        filters.append(Message.is_draft)
-    else:
-        filters.append(~Message.is_draft)
+    query += lambda q: q.filter(
+        Message.namespace_id == bindparam('namespace_id'),
+        Message.is_draft == bindparam('drafts'))
 
     if subject is not None:
-        filters.append(Message.subject == subject)
+        query += lambda q: q.filter(Message.subject == bindparam('subject'))
 
     if unread is not None:
-        read = not unread
-        filters.append(Message.is_read == read)
+        query += lambda q: q.filter(Message.is_read != bindparam('unread'))
 
     if starred is not None:
-        filters.append(Message.is_starred == starred)
+        query += lambda q: q.filter(Message.is_starred == bindparam('starred'))
 
     if thread_public_id is not None:
-        filters.append(Thread.public_id == thread_public_id)
+        query += lambda q: q.filter(
+            Thread.public_id == bindparam('thread_public_id'))
 
     if started_before is not None:
-        filters.append(Thread.subjectdate < started_before)
-        filters.append(Thread.namespace_id == namespace_id)
+        query += lambda q: q.filter(
+            Thread.subjectdate < bindparam('started_before'),
+            Thread.namespace_id == bindparam('namespace_id'))
 
     if started_after is not None:
-        filters.append(Thread.subjectdate > started_after)
-        filters.append(Thread.namespace_id == namespace_id)
+        query += lambda q: q.filter(
+            Thread.subjectdate > bindparam('started_after'),
+            Thread.namespace_id == bindparam('namespace_id'))
 
     if last_message_before is not None:
-        filters.append(Thread.recentdate < last_message_before)
-        filters.append(Thread.namespace_id == namespace_id)
+        query += lambda q: q.filter(
+            Thread.recentdate < bindparam('last_message_before'),
+            Thread.namespace_id == bindparam('namespace_id'))
 
     if last_message_after is not None:
-        filters.append(Thread.recentdate > last_message_after)
-        filters.append(Thread.namespace_id == namespace_id)
+        query += lambda q: q.filter(
+            Thread.recentdate > bindparam('last_message_after'),
+            Thread.namespace_id == bindparam('namespace_id'))
 
     if to_addr is not None:
+        query.spoil()
         to_query = db_session.query(MessageContactAssociation.message_id). \
             join(Contact).filter(
                 MessageContactAssociation.field == 'to_addr',
                 Contact.email_address == to_addr,
-                Contact.namespace_id == namespace_id).subquery()
-        filters.append(Message.id.in_(to_query))
+                Contact.namespace_id == bindparam('namespace_id')).subquery()
+        query += lambda q: q.filter(Message.id.in_(to_query))
 
     if from_addr is not None:
+        query.spoil()
         from_query = db_session.query(MessageContactAssociation.message_id). \
             join(Contact).filter(
                 MessageContactAssociation.field == 'from_addr',
                 Contact.email_address == from_addr,
-                Contact.namespace_id == namespace_id).subquery()
-        filters.append(Message.id.in_(from_query))
+                Contact.namespace_id == bindparam('namespace_id')).subquery()
+        query += lambda q: q.filter(Message.id.in_(from_query))
 
     if cc_addr is not None:
+        query.spoil()
         cc_query = db_session.query(MessageContactAssociation.message_id). \
             join(Contact).filter(
                 MessageContactAssociation.field == 'cc_addr',
                 Contact.email_address == cc_addr,
-                Contact.namespace_id == namespace_id).subquery()
-        filters.append(Message.id.in_(cc_query))
+                Contact.namespace_id == bindparam('namespace_id')).subquery()
+        query += lambda q: q.filter(Message.id.in_(cc_query))
 
     if bcc_addr is not None:
+        query.spoil()
         bcc_query = db_session.query(MessageContactAssociation.message_id). \
             join(Contact).filter(
                 MessageContactAssociation.field == 'bcc_addr',
                 Contact.email_address == bcc_addr,
-                Contact.namespace_id == namespace_id).subquery()
-        filters.append(Message.id.in_(bcc_query))
+                Contact.namespace_id == bindparam('namespace_id')).subquery()
+        query += lambda q: q.filter(Message.id.in_(bcc_query))
 
     if any_email is not None:
+        query.spoil()
         any_email_query = db_session.query(
             MessageContactAssociation.message_id).join(Contact). \
             filter(Contact.email_address == any_email,
-                   Contact.namespace_id == namespace_id).subquery()
-        filters.append(Message.id.in_(any_email_query))
+                   Contact.namespace_id == bindparam('namespace_id')).subquery()
+        query += lambda q: q.filter(Message.id.in_(any_email_query))
 
     if filename is not None:
-        query = query.join(Part).join(Block). \
-            filter(Block.filename == filename,
-                   Block.namespace_id == namespace_id)
+        query += lambda q: q.join(Part).join(Block). \
+            filter(Block.filename == bindparam('filename'),
+                   Block.namespace_id == bindparam('namespace_id'))
 
     if in_ is not None:
-        query = query.join(MessageCategory).join(Category). \
-            filter(Category.namespace_id == namespace_id,
-                   or_(Category.name == in_, Category.display_name == in_,
-                       Category.public_id == in_))
-
-    query = query.filter(*filters)
+        query += lambda q: q.join(MessageCategory).join(Category). \
+            filter(Category.namespace_id == bindparam('namespace_id'),
+                   or_(Category.name == bindparam('in_'),
+                       Category.display_name == bindparam('in_'),
+                       Category.public_id == bindparam('in_id')))
 
     if view == 'count':
-        return {"count": query.one()[0]}
+        res = query(db_session).params(**param_dict).scalar()
+        return {"count": res}
 
-    query = query.order_by(desc(Message.received_date))
-    query = query.limit(limit)
+    query += lambda q: q.order_by(desc(Message.received_date))
+    query += lambda q: q.limit(bindparam('limit'))
     if offset:
-        query = query.offset(offset)
+        query += lambda q: q.offset(bindparam('offset'))
 
     if view == 'ids':
-        return [x[0] for x in query.all()]
+        res = query(db_session).params(**param_dict).all()
+        return [x[0] for x in res]
 
     # Eager-load related attributes to make constructing API representations
     # faster.
-    query = query.options(
+    query += lambda q: q.options(
                 subqueryload(Message.messagecategories).
                 joinedload(MessageCategory.category),
                 subqueryload(Message.parts).joinedload(Part.block),
                 subqueryload(Message.events))
 
-    return query.all()
+    prepared = query(db_session).params(**param_dict)
+
+    return prepared.all()
 
 
 def files(namespace_id, message_public_id, filename, content_type,
