@@ -65,6 +65,23 @@ class Thread(MailSyncBase, HasPublicID, HasRevisions):
             return message
 
     @property
+    def receivedrecentdate(self):
+        received_recent_date = None
+        for m in self.messages:
+            if all(category.name != "sent" for category in m.categories) and \
+                    not m.is_draft:
+                if not received_recent_date or \
+                        m.received_date > received_recent_date:
+                    received_recent_date = m.received_date
+
+        if not received_recent_date:
+            sorted_messages = sorted(self.messages,
+                                     key=lambda m: m.received_date)
+            received_recent_date = sorted_messages[-1]
+
+        return received_recent_date
+
+    @property
     def unread(self):
         return not all(m.is_read for m in self.messages if not m.is_draft)
 

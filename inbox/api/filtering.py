@@ -133,6 +133,7 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
             .joinedload(Part.block))
 
     query = query.order_by(desc(Thread.recentdate)).limit(limit)
+
     if offset:
         query = query.offset(offset)
 
