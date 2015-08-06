@@ -3,7 +3,10 @@ import json
 from inbox.models import Namespace
 from inbox.sqlalchemy_ext.util import generate_public_id
 from inbox.api.validation import noop_event_update
-from tests.util.base import db, api_client, calendar, add_fake_event
+from tests.util.base import db, calendar, add_fake_event
+from tests.api.base import api_client
+
+__all__ = ['api_client', 'db', 'calendar']
 
 
 def test_namespace_id_validation(api_client, db, default_namespace):

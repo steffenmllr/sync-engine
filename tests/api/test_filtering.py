@@ -4,8 +4,9 @@ import calendar
 from sqlalchemy import desc
 from inbox.models import Message, Thread, Namespace, Block, Category
 from inbox.util.misc import dt_to_timestamp
-from tests.util.base import (api_client, test_client, add_fake_message,
+from tests.util.base import (test_client, add_fake_message,
                              add_fake_thread)
+from tests.api.base import api_client
 
 __all__ = ['api_client', 'test_client']
 

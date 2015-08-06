@@ -58,7 +58,6 @@ def auth():
         try:
             g.namespace = g.db_session.query(Namespace) \
                 .filter(Namespace.public_id == namespace_public_id).one()
-            g.encoder = APIEncoder(g.namespace.public_id)
         except NoResultFound:
             return err(404, "Unknown namespace ID")
 
@@ -76,13 +75,18 @@ def auth():
             g.account = g.db_session.query(Account) \
                 .filter(Account.public_id == g.account_id).one()
             g.namespace = g.account.namespace
-            g.encoder = APIEncoder(g.namespace.public_id)
 
         except NoResultFound:
             return make_response((
                 "Could not verify access credential.", 401,
                 {'WWW-Authenticate': 'Basic realm="API '
                  'Access Token Required"'}))
+
+    if hasattr(g, 'legacy_nsid'):
+        g.encoder = APIEncoder(g.namespace.public_id,
+                               legacy_nsid=g.legacy_nsid)
+    else:
+        g.encoder = APIEncoder(g.namespace.public_id)
 
 
 @app.after_request

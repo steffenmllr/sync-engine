@@ -1,6 +1,6 @@
 from inbox.models import Contact
-from tests.util.base import (contact_sync, contacts_provider,
-                             api_client)
+from tests.util.base import contact_sync, contacts_provider
+from tests.api.base import api_client
 
 __all__ = ['contacts_provider', 'contact_sync', 'api_client']
 

@@ -9,6 +9,9 @@ import gevent
 import pytest
 
 from tests.util.base import add_fake_message, add_fake_thread
+from tests.api.base import api_client
+
+__all__ = ['api_client']
 
 
 @pytest.fixture
@@ -60,6 +63,7 @@ def attachments(db):
 def patch_remote_save_draft(monkeypatch):
 
     saved_drafts = []
+
     def mock_remote_save_draft(account, fname, message, db_sess, date=None):
         saved_drafts.append((message, date))
 
@@ -144,7 +148,7 @@ def test_create_draft_replying_to_message(api_client, message):
 
 
 def test_reject_incompatible_reply_thread_and_message(
-    db, api_client, message, thread, default_namespace):
+        db, api_client, message, thread, default_namespace):
     alt_thread = add_fake_thread(db.session, default_namespace.id)
     add_fake_message(db.session, default_namespace.id, alt_thread)
 

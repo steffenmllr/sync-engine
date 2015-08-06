@@ -1,8 +1,10 @@
 import pytest
 import json
-from tests.util.base import (api_client, add_fake_message, default_namespace,
+from tests.util.base import (add_fake_message, default_namespace,
                              new_message_from_synced, mime_message, thread,
                              add_fake_thread, generic_account, gmail_account)
+from tests.api.base import api_client
+
 
 __all__ = ['api_client', 'default_namespace', 'new_message_from_synced',
            'mime_message', 'thread', 'generic_account', 'gmail_account']

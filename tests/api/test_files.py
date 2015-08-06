@@ -6,6 +6,9 @@ import json
 from datetime import datetime
 
 import pytest
+from tests.api.base import api_client
+
+__all__ = ['api_client']
 
 
 FILENAMES = ['muir.jpg', 'LetMeSendYouEmail.wav', 'piece-jointe.jpg',
@@ -87,7 +90,8 @@ def test_file_filtering(api_client, uploaded_file_ids, draft):
     results = api_client.get_data('/files?content_type=image%2Fjpeg')
     assert len(results) == 2
 
-    results = api_client.get_data('/files?content_type=image%2Fjpeg&view=count')
+    results = api_client.get_data(
+        '/files?content_type=image%2Fjpeg&view=count')
     assert results["count"] == 2
 
     results = api_client.get_data('/files?content_type=image%2Fjpeg&view=ids')

@@ -85,6 +85,9 @@ if config.get('DEBUG_PROFILING_ON'):
 def pull_lang_code(endpoint, values):
     if 'namespace_public_id' in values:
         g.namespace_public_id = values.pop('namespace_public_id')
+        g.legacy_nsid = True
+    else:
+        g.legacy_nsid = False
 
 
 @app.before_request
@@ -138,6 +141,7 @@ def handle_input_error(error):
     return response
 
 
+# TODO remove legacy_nsid
 @app.route('/n/<namespace_id>')
 def all_namespaces(namespace_id):
     if not namespace_id == g.namespace.public_id:
@@ -218,7 +222,9 @@ def thread_query_api():
         db_session=g.db_session)
 
     # Use a new encoder object with the expand parameter set.
-    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
+    encoder = APIEncoder(g.namespace.public_id,
+                         args['view'] == 'expanded',
+                         legacy_nsid=g.legacy_nsid)
     return encoder.jsonify(threads)
 
 
@@ -249,7 +255,8 @@ def thread_api(public_id):
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
     # Use a new encoder object with the expand parameter set.
-    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
+    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded',
+                         legacy_nsid=g.legacy_nsid)
     try:
         valid_public_id(public_id)
         thread = g.db_session.query(Thread).filter(
@@ -349,7 +356,8 @@ def message_query_api():
         db_session=g.db_session)
 
     # Use a new encoder object with the expand parameter set.
-    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
+    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded',
+                         legacy_nsid=g.legacy_nsid)
     return encoder.jsonify(messages)
 
 
@@ -379,7 +387,8 @@ def message_search_api(namespace_id):
 def message_read_api(public_id):
     g.parser.add_argument('view', type=view, location='args')
     args = strict_parse_args(g.parser, request.args)
-    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
+    encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded',
+                         legacy_nsid=g.legacy_nsid)
 
     try:
         valid_public_id(public_id)
@@ -561,9 +570,12 @@ def tag_query_api():
         {'object': 'tag',
          'name': obj.display_name,
          'id': obj.name or obj.public_id,
-         'namespace_id': g.namespace.public_id,
          'readonly': False} for obj in categories
     ]
+    if g.legacy_nsid:
+        resp['namespace_id'] = g.namespace.public_id
+    else:
+        resp['account_id'] = g.namespace.public_id
     return g.encoder.jsonify(resp)
 
 
@@ -601,15 +613,20 @@ def tag_detail_api(public_id):
         select_from(Thread).filter(
             Thread.id.in_(unread_subquery)).scalar()
 
-    return g.encoder.jsonify({
+    to_ret = {
         'object': 'tag',
         'name': category.display_name,
         'id': category.name or category.public_id,
-        'namespace_id': g.namespace.public_id,
         'readonly': False,
         'unread_count': unread_count,
         'thread_count': thread_count
-    })
+    }
+
+    if g.legacy_nsid:
+        to_ret['namespace_id'] = g.namespace.public_id
+    else:
+        to_ret['namespace_id'] = g.namespace.public_id
+    return g.encoder.jsonify(to_ret)
 
 
 # -- End tags API shim

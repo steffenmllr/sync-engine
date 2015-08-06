@@ -6,9 +6,12 @@ import pytest
 from tests.util.base import add_fake_message
 from inbox.models import Namespace
 from inbox.util.url import url_concat
+from tests.api.base import api_client
 
 GEVENT_EPSILON = .5  # Greenlet switching time. VMs on Macs suck :()
 LONGPOLL_EPSILON = 1 + GEVENT_EPSILON  # API implementation polls every second
+
+__all__ = ['api_client']
 
 
 @pytest.yield_fixture

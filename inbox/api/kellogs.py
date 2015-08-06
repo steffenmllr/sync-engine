@@ -25,9 +25,10 @@ def format_categories(categories):
              categories]
 
 
-def encode(obj, namespace_public_id=None, expand=False):
+def encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
     try:
-        return _encode(obj, namespace_public_id, expand)
+        return _encode(obj, namespace_public_id, expand,
+                       legacy_nsid=legacy_nsid)
     except Exception as e:
         error_context = {
             "id": getattr(obj, "id", None),
@@ -38,7 +39,7 @@ def encode(obj, namespace_public_id=None, expand=False):
         raise
 
 
-def _encode(obj, namespace_public_id=None, expand=False):
+def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
     """
     Returns a dictionary representation of an Inbox model object obj, or
     None if there is no such representation defined. If the optional
@@ -73,6 +74,11 @@ def _encode(obj, namespace_public_id=None, expand=False):
     def _get_lowercase_class_name(obj):
         return type(obj).__name__.lower()
 
+    if legacy_nsid:
+        public_id_key_name = 'namespace_id'
+    else:
+        public_id_key_name = 'account_id'
+
     # Flask's jsonify() doesn't handle datetimes or json arrays as primary
     # objects.
     if isinstance(obj, datetime.datetime):
@@ -84,6 +90,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
     if isinstance(obj, arrow.arrow.Arrow):
         return encode(obj.datetime)
 
+    # TODO deprecate this and remove -- legacy_nsid
     elif isinstance(obj, Namespace):
         return {
             'id': obj.public_id,
@@ -100,6 +107,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
 
     elif isinstance(obj, Account):
         return {
+            'account_id': obj.account.namespace.public_id,  # ugh
             'id': obj.public_id,
             'object': 'account',
             'email_address': obj.email_address,
@@ -107,7 +115,27 @@ def _encode(obj, namespace_public_id=None, expand=False):
             'organization_unit': obj.category_type,
 
             'provider': obj.provider,
-            # TODO add settings
+
+            'settings': {
+                'imap_host': 'mail.example.com',
+                'imap_port': 993,
+                'imap_ssl': True,
+                'imap_auth_type': 'password',
+
+                # When posting, include
+                # 'imap_username': 'foo_username_xxx',
+                # 'imap_password': 'foo_password_xxx',
+
+                'smtp_host': 'mail.example.com',
+                'smtp_port': 465,
+                'smtp_ssl': True,
+                'smtp_auth_type': 'password',
+
+                # When posting, include
+                # 'smtp_username': 'foo_username_xxx',
+                # 'smtp_password': 'foo_password_xxx',
+
+            },
             # TODO add capabilities/scope (i.e. mail, contacts, cal, etc.)
 
             # 'status':  'syncing',  # TODO what are values here
@@ -118,7 +146,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         resp = {
             'id': obj.public_id,
             'object': 'message',
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'subject': obj.subject,
             'from': format_address_list(obj.from_addr),
             'reply_to': format_address_list(obj.reply_to),
@@ -163,7 +191,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         base = {
             'id': obj.public_id,
             'object': 'thread',
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'subject': obj.subject,
             'participants': format_address_list(obj.participants),
             'last_message_timestamp': obj.recentdate,
@@ -197,7 +225,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
             resp = {
                 'id': msg.public_id,
                 'object': 'message',
-                'namespace_id': _get_namespace_public_id(msg),
+                public_id_key_name: _get_namespace_public_id(msg),
                 'subject': msg.subject,
                 'from': format_address_list(msg.from_addr),
                 'reply_to': format_address_list(msg.reply_to),
@@ -237,7 +265,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         return {
             'id': obj.public_id,
             'object': 'contact',
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'name': obj.name,
             'email': obj.email_address
         }
@@ -246,7 +274,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         resp = {
             'id': obj.public_id,
             'object': 'event',
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'calendar_id': obj.calendar.public_id if obj.calendar else None,
             'message_id': obj.message.public_id if obj.message else None,
             'title': obj.title,
@@ -275,7 +303,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         return {
             'id': obj.public_id,
             'object': 'calendar',
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'name': obj.name,
             'description': obj.description,
             'read_only': obj.read_only,
@@ -292,7 +320,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         resp = {
             'id': obj.public_id,
             'object': 'file',
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'content_type': obj.content_type,
             'size': obj.size,
             'filename': obj.filename,
@@ -311,7 +339,7 @@ def _encode(obj, namespace_public_id=None, expand=False):
         resp = {
             'id': obj.public_id,
             'object': obj.type,
-            'namespace_id': _get_namespace_public_id(obj),
+            public_id_key_name: _get_namespace_public_id(obj),
             'name': obj.name,
             'display_name': obj.api_display_name
         }
@@ -333,15 +361,18 @@ class APIEncoder(object):
         public id of the namespace to which the object to serialize belongs.
 
     """
-    def __init__(self, namespace_public_id=None, expand=False):
-        self.encoder_class = self._encoder_factory(namespace_public_id, expand)
+    def __init__(self, namespace_public_id=None, expand=False,
+                 legacy_nsid=False):
+        self.encoder_class = self._encoder_factory(namespace_public_id, expand,
+                                                   legacy_nsid)
 
-    def _encoder_factory(self, namespace_public_id, expand):
+    def _encoder_factory(self, namespace_public_id, expand, legacy_nsid):
         class InternalEncoder(JSONEncoder):
             def default(self, obj):
                 custom_representation = encode(obj,
                                                namespace_public_id,
-                                               expand=expand)
+                                               expand=expand,
+                                               legacy_nsid=legacy_nsid)
                 if custom_representation is not None:
                     return custom_representation
                 # Let the base class default method raise the TypeError

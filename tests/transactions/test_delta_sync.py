@@ -1,6 +1,9 @@
 import json
 import time
 from tests.util.base import add_fake_message
+from tests.api.base import api_client
+
+__all__ = ['api_client', 'add_fake_message']
 
 
 def get_cursor(api_client, timestamp):

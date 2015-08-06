@@ -7,7 +7,10 @@ import datetime
 import pytest
 import gevent
 
-from tests.util.base import api_client, default_account
+from tests.util.base import default_account
+from tests.api.base import api_client
+
+__all__ = ['api_client', 'default_account']
 
 SELF_SIGNED_CERTFILE = 'tests/data/self_signed_cert.pem'
 SELF_SIGNED_KEYFILE = 'tests/data/self_signed_cert.key'
@@ -28,7 +31,7 @@ class BadCertSMTPServer(smtpd.DebuggingServer):
 
 
 def run_bad_cert_smtp_server():
-    s = BadCertSMTPServer((SMTP_SERVER_HOST, SMTP_SERVER_PORT), (None, None))
+    BadCertSMTPServer((SMTP_SERVER_HOST, SMTP_SERVER_PORT), (None, None))
     asyncore.loop()
 
 

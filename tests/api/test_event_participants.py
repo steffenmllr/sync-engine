@@ -2,8 +2,10 @@ import pytest
 import json
 
 from tests.util.base import calendar
+from tests.api.base import api_client
 
-__all__ = ['calendar']
+
+__all__ = ['calendar', 'api_client']
 
 
 # TODO(emfree) WTF is all this crap anyways?
@@ -16,7 +18,7 @@ def test_api_create(db, api_client, calendar):
         'participants': [{
             'name': 'alyssa p. hacker',
             'email': 'alyssa@example.com'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -45,7 +47,7 @@ def test_api_create_status_yes(db, api_client, calendar):
         'participants': [{
             'email': 'alyssa@example.com',
             'status': 'yes'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -95,7 +97,7 @@ def test_api_create_status_no(db, api_client, calendar):
         'participants': [{
             'email': 'alyssa@example.com',
             'status': 'no'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -116,7 +118,7 @@ def test_api_create_status_maybe(db, api_client, calendar):
         'participants': [{
             'email': 'alyssa@example.com',
             'status': 'maybe'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -137,7 +139,7 @@ def test_api_create_status_noreply(db, api_client, calendar):
         'participants': [{
             'email': 'alyssa@example.com',
             'status': 'noreply'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -157,7 +159,7 @@ def test_api_create_no_name(db, api_client, calendar):
         'calendar_id': calendar.public_id,
         'participants': [{
             'email': 'alyssa@example.com'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -177,7 +179,7 @@ def test_api_create_no_email(db, api_client, calendar):
         'calendar_id': calendar.public_id,
         'participants': [{
             'name': 'alyssa p. hacker',
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -195,7 +197,7 @@ def test_api_create_bad_status(db, api_client, calendar):
             'name': 'alyssa p. hacker',
             'email': 'alyssa@example.com',
             'status': 'bad'
-            }]
+        }]
     }
 
     e_resp = api_client.post_data('/events', e_data)
@@ -317,7 +319,6 @@ def test_api_update_participant_status(db, api_client, calendar):
         res = [e for e in e_data['participants'] if e['email'] == p['email']]
         assert len(res) == 1
         assert p['name'] is None
-
 
 
 @pytest.mark.parametrize('rsvp', ['yes', 'no', 'maybe'])
@@ -453,6 +454,7 @@ def test_api_participant_reply_invalid_event2(db, api_client, calendar):
     assert len(e_resp_data['participants']) == 5
 
     participants = e_resp_data['participants']
+
 
 def test_api_participant_reply_invalid_action(db, api_client, calendar):
     e_data = {
