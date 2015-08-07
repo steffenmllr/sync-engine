@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 
 import pytest
-from tests.api.base import api_client
+from tests.api_legacy.base import api_client
 
 __all__ = ['api_client']
 

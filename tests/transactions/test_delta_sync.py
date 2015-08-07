@@ -3,9 +3,6 @@ import time
 from tests.util.base import add_fake_message
 from tests.api.base import api_client
 
-__all__ = ['api_client', 'add_fake_message']
-
-
 def get_cursor(api_client, timestamp):
     cursor_response = api_client.post_data('/delta/generate_cursor',
                                            {'start': timestamp})
@@ -17,8 +14,9 @@ def test_invalid_input(api_client):
                                            {'start': "I'm not a timestamp!"})
     assert cursor_response.status_code == 400
 
-    sync_response = api_client.client.get(api_client.full_path(
-        '/delta?cursor={}'.format('fake cursor')))
+    sync_response = api_client.client.get(
+        '/delta?cursor={}'.format('fake cursor'),
+        headers=api_client.auth_header)
     assert sync_response.status_code == 400
 
 

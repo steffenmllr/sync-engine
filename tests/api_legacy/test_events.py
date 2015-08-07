@@ -4,7 +4,7 @@ import pytest
 from inbox.sqlalchemy_ext.util import generate_public_id
 from inbox.models import Event
 from tests.util.base import db, calendar, add_fake_event
-from tests.api.base import api_client
+from tests.api_legacy.base import api_client
 
 __all__ = ['api_client', 'calendar', 'db']
 

@@ -2,7 +2,7 @@ import pytest
 import json
 
 from tests.util.base import calendar
-from tests.api.base import api_client
+from tests.api_legacy.base import api_client
 
 
 __all__ = ['calendar', 'api_client']

@@ -8,9 +8,11 @@ import pytest
 import gevent
 
 from tests.util.base import default_account
-from tests.api.base import api_client
+from tests.api.base import api_client, new_api_client
+# legacy_nsid
+from tests.api_legacy.base import api_client as api_client_legacy
 
-__all__ = ['api_client', 'default_account']
+__all__ = ['api_client', 'api_client_legacy', 'default_account']
 
 SELF_SIGNED_CERTFILE = 'tests/data/self_signed_cert.pem'
 SELF_SIGNED_KEYFILE = 'tests/data/self_signed_cert.key'
@@ -69,12 +71,21 @@ def example_draft(db, default_account):
     }
 
 
-def test_smtp_ssl_verification_bad_cert(db, api_client, bad_cert_smtp_server,
-                                        example_draft, local_smtp_account):
+def test_smtp_ssl_verification_bad_cert(db, bad_cert_smtp_server,
+                                        example_draft, local_smtp_account,
+                                        api_client_legacy):
+
+    # Test with legacy_nsid
     ns_public_id = local_smtp_account.namespace.public_id
-    r = api_client.post_data('/send', example_draft, ns_public_id)
+    r = api_client_legacy.post_data('/send', example_draft, ns_public_id)
     assert r.status_code == 503
     assert json.loads(r.data)['message'] == 'SMTP server SSL certificate verify failed'
+
+    custom_api_client = new_api_client(db, local_smtp_account.namespace)
+    r = custom_api_client.post_data('/send', example_draft)
+    assert r.status_code == 503
+    assert json.loads(r.data)['message'] == 'SSL certificate verify failed'
+
 
 if __name__ == '__main__':
     server = BadCertSMTPServer((SMTP_SERVER_HOST, SMTP_SERVER_PORT), None)

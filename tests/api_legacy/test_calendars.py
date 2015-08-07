@@ -1,6 +1,6 @@
 from tests.util.base import add_fake_event
 from inbox.models import Calendar
-from tests.api.base import api_client
+from tests.api_legacy.base import api_client
 from tests.util.base import db, default_namespace
 
 
