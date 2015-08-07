@@ -88,7 +88,7 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
         return obj.isoformat()
 
     if isinstance(obj, arrow.arrow.Arrow):
-        return encode(obj.datetime)
+        return encode(obj.datetime, legacy_nsid=legacy_nsid)
 
     # TODO deprecate this and remove -- legacy_nsid
     elif isinstance(obj, Namespace):
@@ -107,8 +107,8 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
 
     elif isinstance(obj, Account):
         return {
-            'account_id': obj.account.namespace.public_id,  # ugh
-            'id': obj.public_id,
+            'account_id': obj.namespace.public_id,  # ugh
+            'id': obj.namespace.public_id,  # ugh
             'object': 'account',
             'email_address': obj.email_address,
             'name': obj.name,
@@ -160,11 +160,11 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
             'unread': not obj.is_read,
             'starred': obj.is_starred,
             'files': obj.api_attachment_metadata,
-            'events': [encode(e) for e in obj.events]
+            'events': [encode(e, legacy_nsid=legacy_nsid) for e in obj.events]
         }
 
         categories = format_categories(obj.categories)
-        if obj.account.category_type == 'folder':
+        if obj.namespace.account.category_type == 'folder':
             resp['folder'] = categories[0] if categories else None
         else:
             resp['labels'] = categories
@@ -207,7 +207,7 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
         }
 
         categories = format_categories(obj.categories)
-        if obj.account.category_type == 'folder':
+        if obj.namespace.account.category_type == 'folder':
             base['folders'] = categories
         else:
             base['labels'] = categories
@@ -240,7 +240,7 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
                 'files': msg.api_attachment_metadata
             }
             categories = format_categories(msg.categories)
-            if obj.account.category_type == 'folder':
+            if obj.namespace.account.category_type == 'folder':
                 resp['folder'] = categories[0] if categories else None
             else:
                 resp['labels'] = categories
@@ -284,7 +284,7 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
                              for participant in obj.participants],
             'read_only': obj.read_only,
             'location': obj.location,
-            'when': encode(obj.when),
+            'when': encode(obj.when, legacy_nsid=legacy_nsid),
             'busy': obj.busy,
             'status': obj.status,
         }
@@ -294,7 +294,8 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
                 'timezone': obj.start_timezone
             }
         if isinstance(obj, RecurringEventOverride):
-            resp['original_start_time'] = encode(obj.original_start_time)
+            resp['original_start_time'] = encode(obj.original_start_time,
+                                                 legacy_nsid=legacy_nsid)
             if obj.master:
                 resp['master_event_id'] = obj.master.public_id
         return resp
@@ -312,7 +313,8 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
     elif isinstance(obj, When):
         # Get time dictionary e.g. 'start_time': x, 'end_time': y or 'date': z
         times = obj.get_time_dict()
-        resp = {k: encode(v) for k, v in times.iteritems()}
+        resp = {k: encode(v, legacy_nsid=legacy_nsid) for
+                                         k, v in times.iteritems()}
         resp['object'] = _get_lowercase_class_name(obj)
         return resp
 

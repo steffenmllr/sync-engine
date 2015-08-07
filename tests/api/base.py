@@ -26,8 +26,9 @@ class TestAPIClient(object):
                             .format(b64encode(credential))}
 
 
-    def get_raw(self, path):
-        return self.client.get(path, headers=self.auth_header)
+    def get_raw(self, path, headers={}):
+        headers.update(self.auth_header)
+        return self.client.get(path, headers=headers)
 
     def get_data(self, path):
         return json.loads(self.client.get(path, headers=self.auth_header).data)
