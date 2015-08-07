@@ -6,7 +6,7 @@ def new_api_client(db, namespace):
     from inbox.api.srv import app
     app.config['TESTING'] = True
     with app.test_client() as c:
-        return TestAPIClient(c, namespace.public_id)
+        return TestAPIClient(c, namespace.account.public_id)
 
 
 @yield_fixture

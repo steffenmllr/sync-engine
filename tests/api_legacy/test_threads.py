@@ -1,8 +1,7 @@
 import json
 import datetime
-from tests.util.base import (api_client, add_fake_message, default_account,
-                             add_fake_thread)
-
+from tests.util.base import add_fake_message, default_account, add_fake_thread
+from tests.api_legacy.base import api_client
 
 def test_thread_received_recent_date(db, api_client, default_account):
     date1 = datetime.datetime(2015, 1, 1, 0, 0, 0)

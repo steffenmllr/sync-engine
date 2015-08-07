@@ -58,6 +58,7 @@ def auth():
         try:
             g.namespace = g.db_session.query(Namespace) \
                 .filter(Namespace.public_id == namespace_public_id).one()
+            g.namespace_public_id = g.namespace.public_id
         except NoResultFound:
             return err(404, "Unknown namespace ID")
 
@@ -75,6 +76,7 @@ def auth():
             g.account = g.db_session.query(Account) \
                 .filter(Account.public_id == g.account_id).one()
             g.namespace = g.account.namespace
+            g.namespace_public_id = g.account.namespace.public_id
 
         except NoResultFound:
             return make_response((
@@ -163,6 +165,7 @@ def logout():
         {'WWW-Authenticate': 'Basic realm="API Access Token Required"'}))
 
 
-app.register_blueprint(ns_api)  # /n/<namespace_id>/...
+app.register_blueprint(ns_api)
+# legacy_nsid
 app.register_blueprint(ns_api, url_prefix='/n/<namespace_public_id>')
 app.register_blueprint(webhooks_api)  # /w/...

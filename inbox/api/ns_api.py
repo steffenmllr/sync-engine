@@ -98,7 +98,8 @@ def start():
         g.namespace = Namespace.from_public_id(g.namespace_public_id,
                                                g.db_session)
 
-        g.encoder = APIEncoder(g.namespace.public_id)
+        g.encoder = APIEncoder(g.namespace.public_id,
+                               legacy_nsid=g.legacy_nsid)
     except NoResultFound:
         raise NotFoundError("Couldn't find namespace  `{0}` ".format(
             g.namespace_public_id))
