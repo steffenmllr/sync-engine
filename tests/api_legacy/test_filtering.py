@@ -4,8 +4,8 @@ import calendar
 from sqlalchemy import desc
 from inbox.models import Message, Thread, Namespace, Block, Category
 from inbox.util.misc import dt_to_timestamp
-from tests.util.base import (test_client, add_fake_message,
-                             add_fake_thread)
+from tests.util.base import (test_client, add_fake_message, make_config,
+                             add_fake_thread, make_default_account)
 from tests.api_legacy.base import api_client
 
 __all__ = ['api_client', 'test_client']
@@ -294,6 +294,10 @@ def test_filtering_namespaces(db, test_client, default_namespace):
 
 
 def test_namespace_limiting(db, test_client, default_namespace):
+
+    for k in range(5):
+        make_default_account(db, make_config())
+
     dt = datetime.datetime.utcnow()
     subject = dt.isoformat()
     namespaces = db.session.query(Namespace).all()

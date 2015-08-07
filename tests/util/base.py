@@ -18,13 +18,17 @@ def absolute_path(path):
         os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', path))
 
 
-@fixture(scope='session', autouse=True)
-def config():
+def make_config():
     from inbox.config import config
     assert 'INBOX_ENV' in os.environ and \
         os.environ['INBOX_ENV'] == 'test', \
         "INBOX_ENV must be 'test' to run tests"
     return config
+
+
+@fixture(scope='session', autouse=True)
+def config():
+    return make_config()
 
 
 @fixture(scope='session')
@@ -134,8 +138,7 @@ def syncback_service():
     s.join()
 
 
-@fixture(scope='function')
-def default_account(db, config):
+def make_default_account(db, config):
     import platform
     from inbox.models.backends.gmail import GmailAccount
     from inbox.models.backends.gmail import GmailAuthCredentials
@@ -165,6 +168,10 @@ def default_account(db, config):
     db.session.add(auth_creds)
     db.session.commit()
     return account
+
+@fixture(scope='function')
+def default_account(db, config):
+    return make_default_account(db, config)
 
 
 @fixture(scope='function')
