@@ -74,7 +74,10 @@ def test_empty_response_when_latest_cursor_given(db, api_prefix,
 
 def test_gracefully_handle_new_namespace(db, streaming_test_client):
     new_namespace = Namespace()
+    new_account = Account()
+    new_namespace.account = new_account
     db.session.add(new_namespace)
+    db.session.add(new_account)
     db.session.commit()
     cursor = get_cursor(streaming_test_client, int(time.time()),
                         new_namespace)
