@@ -272,11 +272,16 @@ def test_distinct_results(api_client, db, default_namespace):
 
 
 def test_filtering_namespaces(db, test_client, default_namespace):
+
+    for k in range(5):  # add some namespaces
+        make_default_account(db, make_config())
+
     all_namespaces = json.loads(test_client.get('/n/').data)
     email = all_namespaces[0]['email_address']
 
     some_namespaces = json.loads(test_client.get('/n/?offset=1').data)
-    assert len(some_namespaces) == len(all_namespaces) - 1
+    assert all_namespaces[0]['namespace_id'] != \
+           some_namespaces[0]['namespace_id']
 
     no_namespaces = json.loads(test_client.get('/n/?limit=0').data)
     assert no_namespaces == []
