@@ -5,6 +5,7 @@ from gevent import Greenlet
 import pytest
 from tests.util.base import add_fake_message
 from inbox.models import Namespace
+from inbox.models.backends.generic import GenericAccount
 from inbox.util.url import url_concat
 from tests.api_legacy.base import api_client
 
@@ -74,7 +75,8 @@ def test_empty_response_when_latest_cursor_given(db, api_prefix,
 
 def test_gracefully_handle_new_namespace(db, streaming_test_client):
     new_namespace = Namespace()
-    new_account = Account()
+    new_account = GenericAccount()
+    new_account.password = 'hunter2'
     new_namespace.account = new_account
     db.session.add(new_namespace)
     db.session.add(new_account)
