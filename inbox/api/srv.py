@@ -6,7 +6,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from inbox.api.kellogs import APIEncoder
 from nylas.logging import get_logger
 from inbox.models import Namespace, Account
-from inbox.models.session import session_scope, InboxSession
+from inbox.models.session import session_scope, new_session
 from inbox.api.validation import (bounded_str, ValidatableArgument,
                                   strict_parse_args, limit)
 from inbox.api.validation import valid_public_id
@@ -48,7 +48,7 @@ def auth():
                        or request.path.startswith('/w/'):
         return
     # import pdb; pdb.set_trace()
-    g.db_session = InboxSession(engine)
+    g.db_session = new_session(engine)
 
     if request.path.startswith('/n/'):
         ns_parts = filter(None, request.path.split('/'))

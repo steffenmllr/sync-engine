@@ -1,7 +1,7 @@
-from tests.util.base import generic_account, gmail_account
+from tests.util.base import generic_account, gmail_account, db
 from tests.api.base import api_client, new_api_client
 
-__all__ = ['db,', 'api_client', 'generic_account', 'gmail_account']
+__all__ = ['db', 'api_client', 'generic_account', 'gmail_account']
 
 
 def test_account(db, api_client, generic_account, gmail_account):

@@ -231,7 +231,7 @@ def thread_query_api():
 
 @app.route('/threads/search', methods=['GET'],
                               defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/threads/search', methods=['GET', 'POST'])
+@app.route('/n/<namespace_id>/threads/search', methods=['GET'])
 def thread_search_api(namespace_id):
     if namespace_id and not namespace_id == g.namespace.public_id:
         return err(404, "Unknown namespace ID")
@@ -364,7 +364,7 @@ def message_query_api():
 
 @app.route('/messages/search', methods=['GET'],
                                defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/messages/search', methods=['GET', 'POST'])
+@app.route('/n/<namespace_id>/messages/search', methods=['GET'])
 def message_search_api(namespace_id):
     if namespace_id and not namespace_id == g.namespace.public_id:
         return err(404, "Unknown namespace ID")

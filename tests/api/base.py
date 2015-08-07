@@ -2,6 +2,7 @@ import json
 from pytest import yield_fixture
 from base64 import b64encode
 
+
 def new_api_client(db, namespace):
     from inbox.api.srv import app
     app.config['TESTING'] = True
@@ -18,13 +19,14 @@ def api_client(db, default_namespace):
 
 
 class TestAPIClient(object):
+
     """Provide more convenient access to the API for testing purposes."""
+
     def __init__(self, test_client, default_account_public_id):
         self.client = test_client
         credential = '{}:'.format(default_account_public_id)
         self.auth_header = {'Authorization': 'Basic {}'
                             .format(b64encode(credential))}
-
 
     def get_raw(self, path, headers={}):
         headers.update(self.auth_header)

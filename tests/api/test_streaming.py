@@ -157,7 +157,7 @@ def test_longpoll_delta_timeout(db, api_client,
     cursor = get_cursor(api_client, int(time.time() + 22),
                         default_namespace)
     url = url_concat('/delta/longpoll', {'timeout': test_timeout,
-                                       'cursor': cursor})
+                                         'cursor': cursor})
     start_time = time.time()
     resp = api_client.get_raw(url)
     end_time = time.time()

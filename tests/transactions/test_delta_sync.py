@@ -3,6 +3,9 @@ import time
 from tests.util.base import add_fake_message
 from tests.api.base import api_client
 
+__all__ = ['api_client']
+
+
 def get_cursor(api_client, timestamp):
     cursor_response = api_client.post_data('/delta/generate_cursor',
                                            {'start': timestamp})

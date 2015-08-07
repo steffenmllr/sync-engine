@@ -71,7 +71,7 @@ def test_delete_from_readonly_calendar(db, default_namespace, api_client):
     add_fake_event(db.session, default_namespace.id,
                    calendar=db.session.query(Calendar).filter(
                        Calendar.namespace_id == default_namespace.id,
-                       Calendar.read_only == True).first(),
+                       Calendar.read_only == True).first(),  # noqa
                    read_only=True)
     calendar_list = api_client.get_data('/calendars')
 

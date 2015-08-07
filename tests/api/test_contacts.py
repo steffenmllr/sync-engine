@@ -14,7 +14,6 @@ def test_api_list(contacts_provider, contact_sync, db, api_client,
 
     contact_sync.provider = contacts_provider
     contact_sync.sync()
-    ns_id = default_namespace.public_id
 
     contact_list = api_client.get_data('/contacts')
     contact_names = [contact['name'] for contact in contact_list]
@@ -39,7 +38,6 @@ def test_api_get(contacts_provider, contact_sync, db, api_client,
 
     contact_sync.provider = contacts_provider
     contact_sync.sync()
-    ns_id = default_namespace.public_id
 
     contact_list = api_client.get_data('/contacts')
 

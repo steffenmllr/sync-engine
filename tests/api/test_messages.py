@@ -183,7 +183,6 @@ def test_folders_labels(db, api_client, generic_account, gmail_account):
     assert resp_data['object'] == 'message'
     assert 'folder' in resp_data and 'labels' not in resp_data
 
-
     # Because we're using the generic_account namespace
     api_client = new_api_client(db, gmail_account.namespace)
 

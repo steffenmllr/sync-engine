@@ -1,6 +1,7 @@
 import json
 import datetime
-from tests.util.base import add_fake_message, default_account, add_fake_thread
+from tests.util.base import (add_fake_message, default_account,
+                             add_fake_thread, db)
 from tests.api.base import api_client
 
 __all__ = ['db', 'api_client', 'default_account']

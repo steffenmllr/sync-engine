@@ -169,6 +169,7 @@ def make_default_account(db, config):
     db.session.commit()
     return account
 
+
 @fixture(scope='function')
 def default_account(db, config):
     return make_default_account(db, config)

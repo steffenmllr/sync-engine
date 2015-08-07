@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
 from inbox.models import Namespace
-from inbox.sqlalchemy_ext.util import generate_public_id
 from inbox.api.validation import noop_event_update
 from tests.util.base import db, calendar, add_fake_event
 from tests.api.base import api_client

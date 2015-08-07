@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import datetime
-import pytest
 from pytest import fixture
 from sqlalchemy import desc
 from inbox.models import Folder, Message, Thread
@@ -25,6 +24,7 @@ def populate_ids(db, generic_account, default_account):
     imap_uids = db.session.query(ImapUid). \
         filter(ImapUid.account_id == generic_account.id).all()
     imap_ids.extend([imap_uid.msg_uid for imap_uid in imap_uids])
+    return imap_ids
 
 
 @fixture
@@ -316,7 +316,7 @@ def test_imap_pagination(db, imap_api_client, generic_account,
                                                '{}@test.com'.format(str(i))}],
                                    subject='hi',
                                    received_date=datetime.
-                                   datetime(2000+i, 1, 1, 1, 0, 0))
+                                   datetime(2000 + i, 1, 1, 1, 0, 0))
 
         add_fake_imapuid(db.session, generic_account.id, message,
                          folder, i)
@@ -363,7 +363,7 @@ def test_gmail_pagination(db, api_client, default_account,
                                                '{}@test.com'.format(str(i))}],
                                    subject='hi',
                                    received_date=datetime.
-                                   datetime(2000+i, 1, 1, 1, 0, 0))
+                                   datetime(2000 + i, 1, 1, 1, 0, 0))
 
         add_fake_imapuid(db.session, default_account.id, message,
                          folder, i)
@@ -375,8 +375,11 @@ def test_gmail_pagination(db, api_client, default_account,
                             order_by(desc(Message.received_date)). \
                             limit(10).all()
 
+    api_client = new_api_client(db, default_account.namespace)
+
     first_ten_messages_api = api_client.get_data('/messages/search?q=hi'
                                                       '&limit=10')
+    assert len(first_ten_messages_api) == len(first_ten_messages_db)
 
     for db_message, api_message in zip(first_ten_messages_db,
                                         first_ten_messages_api):
@@ -393,6 +396,8 @@ def test_gmail_pagination(db, api_client, default_account,
 
     first_ten_threads_api = api_client.get_data('/threads/search?q=hi'
                                                       '&limit=10')
+
+    assert len(first_ten_threads_api) == len(first_ten_threads_db)
 
     for db_thread, api_thread in zip(first_ten_threads_db,
                                         first_ten_threads_api):
