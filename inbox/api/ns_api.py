@@ -229,12 +229,8 @@ def thread_query_api():
     return encoder.jsonify(threads)
 
 
-@app.route('/threads/search', methods=['GET'],
-                              defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/threads/search', methods=['GET'])
-def thread_search_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/threads/search', methods=['GET'])
+def thread_search_api():
     g.parser.add_argument('q', type=bounded_str, location='args')
     args = strict_parse_args(g.parser, request.args)
     if not args['q']:
@@ -362,12 +358,8 @@ def message_query_api():
     return encoder.jsonify(messages)
 
 
-@app.route('/messages/search', methods=['GET'],
-                               defaults={'namespace_id': None})
-@app.route('/n/<namespace_id>/messages/search', methods=['GET'])
-def message_search_api(namespace_id):
-    if namespace_id and not namespace_id == g.namespace.public_id:
-        return err(404, "Unknown namespace ID")
+@app.route('/messages/search', methods=['GET'])
+def message_search_api():
     g.parser.add_argument('q', type=bounded_str, location='args')
     args = strict_parse_args(g.parser, request.args)
     if not args['q']:
@@ -1339,7 +1331,8 @@ def sync_deltas():
         with session_scope() as db_session:
             deltas, _ = delta_sync.format_transactions_after_pointer(
                 g.namespace, start_pointer, db_session, args['limit'],
-                exclude_types, include_types, exclude_folders)
+                exclude_types, include_types, exclude_folders,
+                legacy_nsid=g.legacy_nsid)
 
         response = {
             'cursor_start': cursor,
@@ -1436,7 +1429,8 @@ def stream_changes():
     generator = delta_sync.streaming_change_generator(
         g.namespace, transaction_pointer=transaction_pointer,
         poll_interval=1, timeout=timeout, exclude_types=exclude_types,
-        include_types=include_types, exclude_folders=exclude_folders)
+        include_types=include_types, exclude_folders=exclude_folders,
+        legacy_nsid=g.legacy_nsid)
     return Response(generator, mimetype='text/event-stream')
 
 
