@@ -7,6 +7,8 @@ from flask import Response
 from inbox.models import (Message, Contact, Calendar, Event, When,
                           Thread, Namespace, Block, Category)
 from inbox.models.event import RecurringEvent, RecurringEventOverride
+from inbox.log import get_logger
+log = get_logger()
 
 
 def format_address_list(addresses):
@@ -24,6 +26,19 @@ def format_categories(categories):
 
 
 def encode(obj, namespace_public_id=None, expand=False):
+    try:
+        return _encode(obj, namespace_public_id, expand)
+    except Exception as e:
+        error_context = {
+            "id": getattr(obj, "id", None),
+            "cls": str(getattr(obj, "__class__", None)),
+            "exception": e
+        }
+        log.error("object encoding failure", **error_context)
+        raise
+
+
+def _encode(obj, namespace_public_id=None, expand=False):
     """
     Returns a dictionary representation of an Inbox model object obj, or
     None if there is no such representation defined. If the optional
@@ -182,7 +197,7 @@ def encode(obj, namespace_public_id=None, expand=False):
                 'starred': msg.is_starred,
                 'files': msg.api_attachment_metadata
             }
-            categories = format_categories(obj.categories)
+            categories = format_categories(msg.categories)
             if obj.account.category_type == 'folder':
                 resp['folder'] = categories[0] if categories else None
             else:
