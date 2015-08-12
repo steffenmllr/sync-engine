@@ -28,12 +28,10 @@ from sqlalchemy.orm import joinedload, load_only
 from inbox.util.itert import chunk, partition
 from inbox.util.debug import bind_context
 
-from inbox.crispin import GmailSettingError
-from inbox.log import get_logger
+from nylas.logging import get_logger
 from inbox.models import Message, Folder, Namespace, Account, Label
 from inbox.models.backends.gmail import GmailAccount
 from inbox.models.backends.imap import ImapFolderInfo, ImapUid, ImapThread
-from inbox.models.constants import MAX_LABEL_NAME_LENGTH
 from inbox.mailsync.backends.base import (mailsync_session_scope,
                                           THROTTLE_WAIT)
 from inbox.mailsync.backends.imap.generic import UIDStack
@@ -50,7 +48,6 @@ GMetadata = namedtuple('GMetadata', 'msgid thrid throttled')
 
 class GmailSyncMonitor(ImapSyncMonitor):
     def __init__(self, *args, **kwargs):
-        kwargs['retry_fail_classes'] = [GmailSettingError]
         ImapSyncMonitor.__init__(self, *args, **kwargs)
         self.sync_engine_class = GmailFolderSyncEngine
 
@@ -74,9 +71,6 @@ class GmailSyncMonitor(ImapSyncMonitor):
 
         """
         account = db_session.query(Account).get(self.account_id)
-        assert 'all' in {f.role for f in raw_folders},\
-            'Account {} has no detected All Mail folder'.\
-            format(account.email_address)
 
         # Create new labels, folders
         for raw_folder in raw_folders:
@@ -479,7 +473,8 @@ def add_new_imapuids(crispin_client, remote_g_metadata, syncmanager_lock,
                         if uid.msg_uid in flags:
                             uid.update_flags(flags[uid.msg_uid].flags)
                             uid.update_labels(flags[uid.msg_uid].labels)
-                            uid.message.update_metadata(uid.is_draft)
-
+                            common.update_message_metadata(db_session, acc,
+                                                           message_for[uid],
+                                                           uid.is_draft)
                 db_session.add_all(new_imapuids)
                 db_session.commit()
