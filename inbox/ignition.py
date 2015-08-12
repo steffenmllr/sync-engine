@@ -1,3 +1,4 @@
+import gevent
 from socket import gethostname
 from sqlalchemy import create_engine, event
 
@@ -11,6 +12,12 @@ DB_POOL_MAX_OVERFLOW = config.get('DB_POOL_MAX_OVERFLOW') or 5
 _hostname = None
 
 
+# See
+# https://github.com/PyMySQL/mysqlclient-python/blob/master/samples/waiter_gevent.py
+def gevent_waiter(fd, hub=gevent.hub.get_hub()):
+    hub.wait(hub.loop.io(fd, 1))
+
+
 def main_engine(pool_size=DB_POOL_SIZE, max_overflow=DB_POOL_MAX_OVERFLOW,
                 echo=False):
     database_name = config.get_required('MYSQL_DATABASE')
@@ -21,7 +28,8 @@ def main_engine(pool_size=DB_POOL_SIZE, max_overflow=DB_POOL_MAX_OVERFLOW,
                            pool_size=pool_size,
                            pool_recycle=3600,
                            max_overflow=max_overflow,
-                           connect_args={'charset': 'utf8mb4'})
+                           connect_args={'charset': 'utf8mb4',
+                                         'waiter': gevent_waiter})
 
     @event.listens_for(engine, 'checkout')
     def receive_checkout(dbapi_connection, connection_record,
