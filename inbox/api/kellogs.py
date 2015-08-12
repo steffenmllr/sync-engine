@@ -116,26 +116,6 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
 
             'provider': obj.provider,
 
-            'settings': {
-                'imap_host': 'mail.example.com',
-                'imap_port': 993,
-                'imap_ssl': True,
-                'imap_auth_type': 'password',
-
-                # When posting, include
-                # 'imap_username': 'foo_username_xxx',
-                # 'imap_password': 'foo_password_xxx',
-
-                'smtp_host': 'mail.example.com',
-                'smtp_port': 465,
-                'smtp_ssl': True,
-                'smtp_auth_type': 'password',
-
-                # When posting, include
-                # 'smtp_username': 'foo_username_xxx',
-                # 'smtp_password': 'foo_password_xxx',
-
-            },
             # TODO add capabilities/scope (i.e. mail, contacts, cal, etc.)
 
             # 'status':  'syncing',  # TODO what are values here

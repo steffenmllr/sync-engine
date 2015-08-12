@@ -601,7 +601,7 @@ def tag_detail_api(public_id):
         filter(
             Message.namespace_id == g.namespace.id,
             MessageCategory.category_id == category.id,
-            Message.is_read is False).subquery()
+            Message.is_read == False).subquery()  # noqa
     unread_count = g.db_session.query(func.count(1)). \
         select_from(Thread).filter(
             Thread.id.in_(unread_subquery)).scalar()
@@ -618,7 +618,7 @@ def tag_detail_api(public_id):
     if g.legacy_nsid:
         to_ret['namespace_id'] = g.namespace.public_id
     else:
-        to_ret['namespace_id'] = g.namespace.public_id
+        to_ret['account_id'] = g.namespace.public_id
     return g.encoder.jsonify(to_ret)
 
 

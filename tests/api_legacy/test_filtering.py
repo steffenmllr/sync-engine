@@ -4,11 +4,11 @@ import calendar
 from sqlalchemy import desc
 from inbox.models import Message, Thread, Namespace, Block, Category
 from inbox.util.misc import dt_to_timestamp
-from tests.util.base import (test_client, add_fake_message, make_config,
-                             add_fake_thread, make_default_account)
+from tests.util.base import (test_client, add_fake_message, config,
+                             add_fake_thread)
 from tests.api_legacy.base import api_client
 
-__all__ = ['api_client', 'test_client']
+__all__ = ['api_client', 'test_client', 'config']
 
 
 def test_filtering(db, api_client, default_namespace):
@@ -271,10 +271,7 @@ def test_distinct_results(api_client, db, default_namespace):
     assert len(filtered_results) == 1
 
 
-def test_filtering_namespaces(db, test_client, default_namespace):
-
-    for k in range(5):  # add some namespaces
-        make_default_account(db, make_config())
+def test_filtering_namespaces(db, test_client, default_namespace, config):
 
     all_namespaces = json.loads(test_client.get('/n/').data)
     email = all_namespaces[0]['email_address']
@@ -298,10 +295,7 @@ def test_filtering_namespaces(db, test_client, default_namespace):
     assert len(namespaces) == 0
 
 
-def test_namespace_limiting(db, test_client, default_namespace):
-
-    for k in range(5):
-        make_default_account(db, make_config())
+def test_namespace_limiting(db, test_client, default_namespace, config):
 
     dt = datetime.datetime.utcnow()
     subject = dt.isoformat()
