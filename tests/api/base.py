@@ -7,7 +7,7 @@ def new_api_client(db, namespace):
     from inbox.api.srv import app
     app.config['TESTING'] = True
     with app.test_client() as c:
-        return TestAPIClient(c, namespace.account.public_id)
+        return TestAPIClient(c, namespace.public_id)
 
 
 @yield_fixture
@@ -15,16 +15,16 @@ def api_client(db, default_namespace):
     from inbox.api.srv import app
     app.config['TESTING'] = True
     with app.test_client() as c:
-        yield TestAPIClient(c, default_namespace.account.public_id)
+        yield TestAPIClient(c, default_namespace.public_id)
 
 
 class TestAPIClient(object):
 
     """Provide more convenient access to the API for testing purposes."""
 
-    def __init__(self, test_client, default_account_public_id):
+    def __init__(self, test_client, default_namespace_public_id):
         self.client = test_client
-        credential = '{}:'.format(default_account_public_id)
+        credential = '{}:'.format(default_namespace_public_id)
         self.auth_header = {'Authorization': 'Basic {}'
                             .format(b64encode(credential))}
 

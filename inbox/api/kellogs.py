@@ -91,7 +91,7 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
         return encode(obj.datetime, legacy_nsid=legacy_nsid)
 
     # TODO deprecate this and remove -- legacy_nsid
-    elif isinstance(obj, Namespace):
+    elif isinstance(obj, Namespace) and legacy_nsid:
         return {
             'id': obj.public_id,
             'object': 'namespace',
@@ -104,6 +104,20 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
             'provider': obj.account.provider,
             'organization_unit': obj.account.category_type
         }
+    elif isinstance(obj, Namespace):  # these are now "Account" objects
+        return {
+            'id': obj.public_id,
+            'object': 'account',
+            'account_id': obj.public_id,
+
+            'email_address': obj.account.email_address,
+            'name': obj.account.name,
+            'provider': obj.account.provider,
+            'organization_unit': obj.account.category_type
+        }
+
+    elif isinstance(obj, Account) and not legacy_nsid:
+        raise Exception("Should never be serializing accounts (legacy_nsid)")
 
     elif isinstance(obj, Account):
         return {

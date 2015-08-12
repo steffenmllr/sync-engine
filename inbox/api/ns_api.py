@@ -144,7 +144,7 @@ def handle_input_error(error):
 
 # TODO remove legacy_nsid
 @app.route('/n/<namespace_id>')
-def all_namespaces(namespace_id):
+def single_namespace(namespace_id):
     if not namespace_id == g.namespace.public_id:
         return err(404, "Unknown namespace ID")
     valid_public_id(namespace_id)
@@ -152,7 +152,7 @@ def all_namespaces(namespace_id):
     try:
         f = g.db_session.query(Namespace).filter(
             Namespace.public_id == namespace_id).one()
-        return g.encoder.jsonify(f)
+        return APIEncoder(namespace_id, legacy_nsid=True).jsonify(f)
     except NoResultFound:
         raise NotFoundError("Couldn't find namespace {0} "
                             .format(namespace_id))
@@ -160,7 +160,7 @@ def all_namespaces(namespace_id):
 
 @app.route('/account')
 def one_account():
-    return g.encoder.jsonify(g.account)
+    return g.encoder.jsonify(g.namespace)
 
 
 #

@@ -69,14 +69,12 @@ def auth():
                 {'WWW-Authenticate': 'Basic realm="API '
                  'Access Token Required"'}))
 
-        g.account_id = request.authorization.username
+        g.namespace_public_id = request.authorization.username
 
         try:
-            valid_public_id(g.account_id)
-            g.account = g.db_session.query(Account) \
-                .filter(Account.public_id == g.account_id).one()
-            g.namespace = g.account.namespace
-            g.namespace_public_id = g.account.namespace.public_id
+            valid_public_id(g.namespace_public_id)
+            g.namespace = g.db_session.query(Namespace) \
+                .filter(Namespace.public_id == g.namespace_public_id).one()
 
         except NoResultFound:
             return make_response((
@@ -103,31 +101,8 @@ def finish(response):
     return response
 
 
-@app.route('/accounts')
-def home():
-    """ Return all account objects """
-    with session_scope() as db_session:
-        parser = reqparse.RequestParser(argument_class=ValidatableArgument)
-        parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
-                            location='args')
-        parser.add_argument('offset', default=0, type=int, location='args')
-        parser.add_argument('email_address', type=bounded_str, location='args')
-        args = strict_parse_args(parser, request.args)
-
-        query = db_session.query(Account)
-        if args['email_address']:
-            query = query.filter_by(email_address=args['email_address'])
-
-        query = query.limit(args['limit'])
-        if args['offset']:
-            query = query.offset(args['offset'])
-
-        accounts = query.all()
-        encoder = APIEncoder()
-        return encoder.jsonify(accounts)
-
-
 @app.route('/n/')
+@app.route('/accounts/')
 def ns_all():
     """ Return all namespaces """
     # We do this outside the blueprint to support the case of an empty
@@ -151,7 +126,7 @@ def ns_all():
             query = query.offset(args['offset'])
 
         namespaces = query.all()
-        encoder = APIEncoder()
+        encoder = APIEncoder(legacy_nsid=request.path.startswith('/n'))
         return encoder.jsonify(namespaces)
 
 
