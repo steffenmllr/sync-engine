@@ -13,6 +13,7 @@ down_revision = '3cf51fb0e76a'
 from alembic import op
 import sqlalchemy as sa
 
+
 def upgrade():
     from inbox.ignition import main_engine
     engine = main_engine(pool_size=1, max_overflow=0)
@@ -24,6 +25,7 @@ def upgrade():
     op.add_column('easfoldersyncstatus', sa.Column('initial_sync_start',
                                                    sa.DateTime(),
                                                    nullable=True))
+
 
 def downgrade():
     from inbox.ignition import main_engine
