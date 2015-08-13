@@ -244,7 +244,8 @@ def streaming_change_generator(namespace, poll_interval, timeout,
         with session_scope() as db_session:
             deltas, new_pointer = format_transactions_after_pointer(
                 namespace, transaction_pointer, db_session, 100,
-                exclude_types, include_types, exclude_folders)
+                exclude_types, include_types, exclude_folders,
+                legacy_nsid=legacy_nsid)
 
         if new_pointer is not None and new_pointer != transaction_pointer:
             transaction_pointer = new_pointer
