@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 import datetime
 from pytest import fixture
-from sqlalchemy import desc
-from inbox.models import Folder, Message, Thread
+from inbox.models import Folder, Message
 from inbox.models.backends.imap import ImapUid
 from inbox.search.base import get_search_client
 from tests.util.base import (add_fake_message, add_fake_thread,
                              add_fake_imapuid, add_fake_folder)
-from tests.api.base import api_client, new_api_client
+from tests.api_legacy.base import api_client, new_api_client
+
+__all__ = ['api_client']
 
 
 @fixture
@@ -39,11 +40,11 @@ def sorted_gmail_messages(db, default_account, sorted_gmail_threads, folder):
     thread1, thread2, thread3 = sorted_gmail_threads
     message1 = add_fake_message(db.session, default_account.namespace.id,
                                  thread=thread1,
+                                 g_msgid=1,
                                  from_addr=[{'name': 'Ben Bitdiddle',
                                              'email': 'ben@bitdiddle.com'}],
                                  to_addr=[{'name': 'Barrack Obama',
                                            'email': 'barrack@obama.com'}],
-                                 g_msgid=1,
                                  received_date=datetime.
                                  datetime(2015, 7, 9, 23, 50, 7),
                                  subject='YOO!')
@@ -53,11 +54,11 @@ def sorted_gmail_messages(db, default_account, sorted_gmail_threads, folder):
 
     message2 = add_fake_message(db.session, default_account.namespace.id,
                                  thread=thread2,
+                                 g_msgid=2,
                                  from_addr=[{'name': 'Ben Bitdiddle',
                                              'email': 'ben@bitdiddle.com'}],
                                  to_addr=[{'name': 'Barrack Obama',
                                            'email': 'barrack@obama.com'}],
-                                 g_msgid=2,
                                  received_date=datetime.
                                  datetime(2014, 7, 9, 23, 50, 7),
                                  subject='Hey!')
@@ -67,11 +68,11 @@ def sorted_gmail_messages(db, default_account, sorted_gmail_threads, folder):
 
     message3 = add_fake_message(db.session, default_account.namespace.id,
                                  thread=thread3,
+                                 g_msgid=3,
                                  from_addr=[{'name': 'Ben Bitdiddle',
                                              'email': 'ben@bitdiddle.com'}],
                                  to_addr=[{'name': 'Barrack Obama',
                                            'email': 'barrack@obama.com'}],
-                                 g_msgid=3,
                                  received_date=datetime.
                                  datetime(2013, 7, 9, 23, 50, 7),
                                  subject='Sup?')
@@ -293,137 +294,3 @@ def test_gmail_search_unicode(db, api_client, test_gmail_thread,
 
     for sorted_thread, result_thread in zip(sorted_gmail_threads, threads):
         assert sorted_thread.public_id == result_thread['id']
-
-
-def test_imap_pagination(db, imap_api_client, generic_account,
-                         patch_crispin_client,
-                         patch_handler_from_provider, folder):
-    for i in range(10):
-        thread = add_fake_thread(db.session, generic_account.namespace.id)
-        message = add_fake_message(db.session, generic_account.namespace.id,
-                                   thread=thread,
-                                   from_addr=[{'name': '', 'email':
-                                               '{}@test.com'.format(str(i))}],
-                                   subject='hi',
-                                   received_date=datetime.
-                                   datetime(2000 + i, 1, 1, 1, 0, 0))
-
-        add_fake_imapuid(db.session, generic_account.id, message,
-                         folder, i)
-
-    first_ten_messages_db = db.session.query(Message)\
-                            .filter(Message.namespace_id ==
-                                    generic_account.namespace.id). \
-                            order_by(desc(Message.received_date)). \
-                            limit(10).all()
-
-    first_ten_messages_api = imap_api_client.get_data('/messages/search?q=hi'
-                                                      '&limit=10')
-
-    for db_message, api_message in zip(first_ten_messages_db,
-                                        first_ten_messages_api):
-        assert db_message.public_id == api_message['id']
-
-    imap_uids = db.session.query(ImapUid).join(Message) \
-                    .filter(
-                        ImapUid.message_id == Message.id,
-                        Message.g_msgid == None).all()
-    uids = [uid.msg_uid for uid in imap_uids]
-
-    first_ten_threads_db = db.session.query(Thread) \
-                            .join(Message) \
-                            .join(ImapUid) \
-                            .filter(ImapUid.account_id == generic_account.id,
-                                    ImapUid.msg_uid.in_(uids),
-                                    Thread.id == Message.thread_id)\
-                            .order_by(desc(Message.received_date)) \
-                            .limit(10).all()
-
-    first_ten_threads_api = imap_api_client.get_data('/threads/search?q=hi'
-                                                      '&limit=10')
-
-    for db_thread, api_thread in zip(first_ten_threads_db,
-                                        first_ten_threads_api):
-        assert db_thread.public_id == api_thread['id']
-
-
-def test_gmail_pagination(db, default_account,
-                          patch_crispin_client,
-                          patch_handler_from_provider,
-                          folder):
-    for i in range(10):
-        thread = add_fake_thread(db.session, default_account.namespace.id)
-        message = add_fake_message(db.session, default_account.namespace.id,
-                                   thread=thread,
-                                   from_addr=[{'name': '', 'email':
-                                               '{}@test.com'.format(str(i))}],
-                                   subject='hi',
-                                   g_msgid=i,
-                                   received_date=datetime.
-                                   datetime(2000 + i, 1, 1, 1, 0, 0))
-
-        add_fake_imapuid(db.session, default_account.id, message,
-                         folder, i)
-
-    first_ten_messages_db = db.session.query(Message)\
-                            .filter(Message.namespace_id ==
-                                    default_account.namespace.id). \
-                            order_by(desc(Message.received_date)). \
-                            limit(10).all()
-
-    api_client = new_api_client(db, default_account.namespace)
-
-    first_ten_messages_api = api_client.get_data('/messages/search?q=hi'
-                                                      '&limit=10')
-    assert len(first_ten_messages_api) == len(first_ten_messages_db)
-
-    for db_message, api_message in zip(first_ten_messages_db,
-                                        first_ten_messages_api):
-        assert db_message.public_id == api_message['id']
-
-    imap_uids = db.session.query(ImapUid).join(Message) \
-                    .filter(
-                        ImapUid.message_id == Message.id,
-                        Message.g_msgid != None).all()
-    uids = [uid.msg_uid for uid in imap_uids]
-
-    first_ten_threads_db = db.session.query(Thread) \
-                            .join(Message) \
-                            .join(ImapUid) \
-                            .filter(ImapUid.account_id == default_account.id,
-                                    ImapUid.msg_uid.in_(uids),
-                                    Thread.id == Message.thread_id)\
-                            .order_by(desc(Message.received_date)) \
-                            .limit(10).all()
-
-    first_ten_threads_api = api_client.get_data('/threads/search?q=hi'
-                                                      '&limit=10')
-
-    assert len(first_ten_threads_api) == len(first_ten_threads_db)
-
-    for db_thread, api_thread in zip(first_ten_threads_db,
-                                        first_ten_threads_api):
-        assert db_thread.public_id == api_thread['id']
-
-
-def test_end_of_messages(db, api_client, default_account,
-                          patch_crispin_client,
-                          patch_handler_from_provider,
-                          sorted_gmail_messages):
-
-    end_of_messages = api_client.get_data('/messages/search?q=hi'
-                                          '&offset=100&limit=10')
-    assert len(end_of_messages) == 0
-
-
-def test_correct_thread_count(db, default_account,
-                              patch_crispin_client,
-                              patch_handler_from_provider,
-                              sorted_gmail_messages):
-
-    api_client = new_api_client(db, default_account.namespace)
-
-    first_two_threads = api_client.get_data('/threads/search?q=hi'
-                                              '&limit=2')
-
-    assert len(first_two_threads) == 2
