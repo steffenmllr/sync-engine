@@ -1,6 +1,6 @@
 # Nylas Sync Engine
 
-The Nylas Sync Engine provides a RESTful API on top of a powerful email sync platform, making it easy to build apps on top of email. See the [full API documentation](https://www.nylas.com/docs/api#overview) for more details.
+The Nylas Sync Engine provides a RESTful API on top of a powerful email sync platform, making it easy to build apps on top of email. See the [full API documentation](https://www.nylas.com/docs/) for more details.
 
 [Join our Slack channel ![Slack Invite Button](http://slack-invite.nylas.com/badge.svg)](http://slack-invite.nylas.com)
 
@@ -51,7 +51,7 @@ For subsequent requests to retreive mail, contacts, and calendar data, your app 
 If you are using a web browser and would like to clear your cached HTTP Basic Auth values, simply visit http://localhost:5555/logout and click "Cancel".
 
 
-Now you can start writing your own application on top of the Nylas API! For more information about the internals of the Nylas Sync Engine, see the <a href="https://nylas.com/docs/api">Nylas API Documentation</a>.
+Now you can start writing your own application on top of the Nylas API! For more information about the internals of the Nylas Sync Engine, see the <a href="https://nylas.com/docs/">Nylas API Documentation</a>.
 
 
 ## Production Support
