@@ -1,3 +1,8 @@
+import talon
+from talon import quotations
+talon.init()
+
+
 import arrow
 import datetime
 import calendar
@@ -137,6 +142,9 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
         }
 
     elif isinstance(obj, Message):
+        text  = quotations.extract_from(obj.body, 'text/html')
+        text  = quotations.extract_from_html(html)
+
         resp = {
             'id': obj.public_id,
             'object': 'message',
@@ -151,6 +159,7 @@ def _encode(obj, namespace_public_id=None, expand=False, legacy_nsid=False):
             'thread_id': obj.thread.public_id,
             'snippet': obj.snippet,
             'body': obj.body,
+            'text': text,
             'unread': not obj.is_read,
             'starred': obj.is_starred,
             'files': obj.api_attachment_metadata,
